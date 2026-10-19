@@ -1,0 +1,19 @@
+[Unit]
+Description=Planejador do Uélicon (planejador.vpsjean.com)
+After=network.target
+
+[Service]
+User=planejador
+Group=planejador
+WorkingDirectory=/opt/planejador-uelicon
+EnvironmentFile=/opt/planejador-uelicon/.env
+ExecStart=/opt/planejador-uelicon/venv/bin/uvicorn app:app --host 127.0.0.1 --port 8761 --no-server-header --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=always
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/planejador-uelicon/dados
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
