@@ -25,11 +25,11 @@ FUSO = ZoneInfo("America/Sao_Paulo")
 SESSAO_DIAS = 30
 
 STATUS = ["a_gravar", "gravado", "editado", "postado", "pulado"]
-FRENTES = {
-    "f": {"nome": "Formação", "para": "quem quer trabalhar com crédito"},
-    "c": {"nome": "Consulta", "para": "quem tem nome limpo, quer crédito e ouve não do banco"},
-    "g": {"nome": "Geral", "para": "notícia, palestra e posicionamento"},
-}
+
+
+def frentes():
+    with con() as c:
+        return linhas(c.execute("SELECT * FROM frentes WHERE ativo=1 ORDER BY ordem, nome"))
 
 
 def hoje() -> date:
@@ -164,7 +164,7 @@ def sair(resp: Response):
 @app.get("/api/eu")
 def eu(req: Request):
     u = usuario(req)
-    return {"usuario": u, "hoje": hoje().isoformat(), "frentes": FRENTES, "status": STATUS,
+    return {"usuario": u, "hoje": hoje().isoformat(), "frentes": frentes(), "status": STATUS,
             "formatos": formatos()}
 
 
@@ -471,6 +471,154 @@ def andamento(req: Request):
              JOIN formatos f ON f.id=v.formato ORDER BY h.id DESC LIMIT 15"""))
     return {"hoje": h.isoformat(), "semanas": semanas, "atrasados": [video_saida(v) for v in atrasados],
             "sem_post": [video_saida(v) for v in sem_post], "dias": dias, "dias_frente": df, "assuntos_incompletos": falta, "historico": hist}
+
+
+# ---------- início: o que fazer agora ----------
+
+@app.get("/api/inicio")
+def inicio(req: Request):
+    equipe(req)
+    h = hoje()
+    seg = segunda(h)
+    with con() as c:
+        def vids(onde, *args):
+            return [video_saida(v) for v in linhas(c.execute(SQL_VIDEO + " WHERE " + onde + " ORDER BY v.data, v.ordem, v.id", args))]
+        hoje_v = vids("v.data=? AND v.status<>'pulado'", h.isoformat())
+        # Próximos 3 dias com assunto faltando: é o que o Arlindo precisa preencher primeiro.
+        preencher = [v for v in vids("v.data BETWEEN ? AND ? AND v.status='a_gravar'", h.isoformat(), (h + timedelta(days=3)).isoformat())
+                     if not v["completo"]]
+        atrasados = vids("v.status='a_gravar' AND v.data<? AND v.data>=?", h.isoformat(), (h - timedelta(days=21)).isoformat())
+        sem_post = vids("v.status IN ('gravado','editado')")
+        r = c.execute("""SELECT count(*) tot, sum(status IN ('gravado','editado','postado')) grav, sum(status='postado') post
+             FROM videos WHERE data BETWEEN ? AND ? AND status<>'pulado'""", (seg.isoformat(), (seg + timedelta(days=5)).isoformat())).fetchone()
+        prox = c.execute("SELECT count(*) FROM videos WHERE data BETWEEN ? AND ?",
+                         ((seg + timedelta(days=7)).isoformat(), (seg + timedelta(days=12)).isoformat())).fetchone()[0]
+    return {"hoje": h.isoformat(), "videos_hoje": hoje_v, "preencher": preencher, "atrasados": atrasados, "sem_post": sem_post,
+            "semana": {"inicio": seg.isoformat(), "total": r["tot"] or 0, "gravados": r["grav"] or 0, "postados": r["post"] or 0},
+            "proxima_semana_montada": prox > 0, "proxima_inicio": (seg + timedelta(days=7)).isoformat()}
+
+
+# ---------- configurações: pessoas e formatos ----------
+
+PAPEIS = ("super", "equipe", "gravador")
+
+
+@app.get("/api/usuarios")
+def lista_usuarios(req: Request):
+    equipe(req)
+    with con() as c:
+        return linhas(c.execute("SELECT id, login, nome, papel, ativo FROM usuarios ORDER BY ativo DESC, nome"))
+
+
+@app.post("/api/usuarios")
+async def novo_usuario(req: Request):
+    u = equipe(req)
+    d = await req.json()
+    login, nome, papel, senha = (str(d.get(k, "")).strip() for k in ("login", "nome", "papel", "senha"))
+    if not login or not nome or len(senha) < 6:
+        raise HTTPException(400, "Preencha nome, usuário e uma senha de 6 letras ou mais.")
+    if papel not in PAPEIS or (papel == "super" and u["papel"] != "super"):
+        raise HTTPException(403, "Esse acesso só o Jean dá.")
+    with con() as c:
+        if c.execute("SELECT 1 FROM usuarios WHERE lower(login)=?", (login.lower(),)).fetchone():
+            raise HTTPException(400, "Já existe alguém com esse usuário.")
+        cur = c.execute("INSERT INTO usuarios (login, nome, papel, senha) VALUES (?,?,?,?)", (login.lower(), nome, papel, hash_senha(senha)))
+        return {"id": cur.lastrowid}
+
+
+@app.patch("/api/usuarios/{uid}")
+async def muda_usuario(uid: int, req: Request):
+    u = equipe(req)
+    d = await req.json()
+    with con() as c:
+        alvo = c.execute("SELECT * FROM usuarios WHERE id=?", (uid,)).fetchone()
+        if not alvo:
+            raise HTTPException(404, "Pessoa não encontrada.")
+        if u["papel"] != "super" and (alvo["papel"] == "super" or d.get("papel") == "super"):
+            raise HTTPException(403, "Esse acesso só o Jean muda.")
+        if uid == u["id"] and (d.get("ativo") == 0 or ("papel" in d and d["papel"] != u["papel"])):
+            raise HTTPException(400, "Você não pode tirar o seu próprio acesso.")
+        sets = {}
+        for k in ("nome", "papel", "ativo"):
+            if k in d:
+                sets[k] = d[k]
+        if "papel" in sets and sets["papel"] not in PAPEIS:
+            raise HTTPException(400, "Papel inválido.")
+        if d.get("senha"):
+            if len(d["senha"]) < 6:
+                raise HTTPException(400, "A senha precisa de 6 letras ou mais.")
+            sets["senha"] = hash_senha(d["senha"])
+        if sets:
+            c.execute(f"UPDATE usuarios SET {', '.join(k + '=?' for k in sets)} WHERE id=?", (*sets.values(), uid))
+    return {"ok": True}
+
+
+@app.patch("/api/formatos/{fid}")
+async def muda_formato(fid: str, req: Request):
+    equipe(req)
+    d = await req.json()
+    sets = {k: d[k] for k in ("nome", "dica", "palavra", "ativo") if k in d}
+    if "passos" in d:
+        passos = [str(p).strip() for p in d["passos"] if str(p).strip()]
+        sets["passos"] = json.dumps(passos, ensure_ascii=False)
+    if not sets:
+        return {"ok": True}
+    with con() as c:
+        c.execute(f"UPDATE formatos SET {', '.join(k + '=?' for k in sets)} WHERE id=?", (*sets.values(), fid))
+    return {"ok": True}
+
+
+@app.post("/api/formatos")
+async def novo_formato(req: Request):
+    equipe(req)
+    d = await req.json()
+    fr = d.get("frente")
+    with con() as c:
+        frente = c.execute("SELECT * FROM frentes WHERE id=?", (fr,)).fetchone()
+        if not frente or not str(d.get("nome", "")).strip():
+            raise HTTPException(400, "Escolha a aba e dê um nome ao tópico.")
+        n = c.execute("SELECT count(*) FROM formatos WHERE frente=?", (fr,)).fetchone()[0] + 1
+        fid = f"{fr.upper()}-{n:02d}"
+        while c.execute("SELECT 1 FROM formatos WHERE id=?", (fid,)).fetchone():
+            n += 1
+            fid = f"{fr.upper()}-{n:02d}"
+        ordem = c.execute("SELECT coalesce(max(ordem),0)+1 FROM formatos").fetchone()[0]
+        c.execute("INSERT INTO formatos (id, frente, nome, dica, passos, palavra, ordem) VALUES (?,?,?,?,?,?,?)",
+                  (fid, fr, d["nome"].strip(), str(d.get("dica", "")).strip(), "[]", frente["palavra"], ordem))
+    return {"id": fid}
+
+
+CORES = ["#be185d", "#047857", "#0e7490", "#6d28d9", "#b45309", "#4d7c0f", "#9f1239", "#1e3a8a"]
+
+
+@app.post("/api/frentes")
+async def nova_frente(req: Request):
+    equipe(req)
+    d = await req.json()
+    nome = str(d.get("nome", "")).strip()
+    if not nome:
+        raise HTTPException(400, "Dê um nome para a aba.")
+    with con() as c:
+        n = c.execute("SELECT count(*) FROM frentes").fetchone()[0]
+        fid = f"p{n + 1}"
+        while c.execute("SELECT 1 FROM frentes WHERE id=?", (fid,)).fetchone():
+            n += 1
+            fid = f"p{n + 1}"
+        ordem = c.execute("SELECT coalesce(max(ordem),0)+1 FROM frentes").fetchone()[0]
+        c.execute("INSERT INTO frentes (id, nome, para, palavra, cor, ordem) VALUES (?,?,?,?,?,?)",
+                  (fid, nome, str(d.get("para", "")).strip(), (str(d.get("palavra", "")).strip() or nome).upper(), CORES[n % len(CORES)], ordem))
+    return {"id": fid}
+
+
+@app.patch("/api/frentes/{fid}")
+async def muda_frente(fid: str, req: Request):
+    equipe(req)
+    d = await req.json()
+    sets = {k: d[k] for k in ("nome", "para", "palavra", "ativo") if k in d}
+    if sets:
+        with con() as c:
+            c.execute(f"UPDATE frentes SET {', '.join(k + '=?' for k in sets)} WHERE id=?", (*sets.values(), fid))
+    return {"ok": True}
 
 
 # ---------- tela ----------

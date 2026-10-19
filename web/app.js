@@ -1,28 +1,27 @@
-/* Planejador do Uélicon: tela única com rotas por hash (#semana, #hoje, #assuntos, #receitas, #andamento).
-   Visual: Design da Central, pele Roxo (estilo.css). */
+/* Planejador do Uélicon: tela única com rotas por hash.
+   #inicio · #semana/<seg> · #hoje/<dia> · #assuntos/<aba>/<topico> · #andamento · #config/<pessoas|receitas>/<id> */
 (function () {
   'use strict';
 
-  var B = { eu: null, formatos: [], fmap: {}, frentes: {}, hoje: '' };
-  var S = { semana: null, receitas: [], assuntos: [], confirmar: false, dia: null, filtro: 'falta', faltam: 0 };
+  var B = { eu: null, formatos: [], fmap: {}, frentes: [], fr: {}, hoje: '' };
+  var S = { semana: null, receitas: [], assuntos: [], confirmar: false, dia: null, vids: {}, faltam: 0 };
   var DIAS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
   var CURTO = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
   var ST_NOME = { a_gravar: 'A gravar', gravado: 'Gravado', editado: 'Editado', postado: 'Postado', pulado: 'Pulado' };
-  var ST_COR = { a_gravar: '', gravado: 'info', editado: 'info', postado: 'ok', pulado: '' };
+  var PAPEL = { super: 'Tudo (administrador)', equipe: 'Equipe: planeja e acompanha', gravador: 'Gravação: só a folha do dia' };
   var app = document.getElementById('app');
 
-  // Lucide, 16 px, traço 1,8
   var IC = {
+    inicio: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/>',
     semana: '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
     hoje: '<rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/>',
     assuntos: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
-    receitas: '<path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
     andamento: '<path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/>',
+    config: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
     sair: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/>',
     imprimir: '<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/>',
-    x: '<path d="M18 6 6 18M6 6l12 12"/>',
-    esq: '<path d="m15 18-6-6 6-6"/>', dir: '<path d="m9 18 6-6-6-6"/>',
-    check: '<path d="M20 6 9 17l-5-5"/>', mais: '<path d="M12 5v14M5 12h14"/>'
+    x: '<path d="M18 6 6 18M6 6l12 12"/>', esq: '<path d="m15 18-6-6 6-6"/>', dir: '<path d="m9 18 6-6-6-6"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>', mais: '<path d="M12 5v14M5 12h14"/>', lapis: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>'
   };
   function ic(n) { return '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">' + IC[n] + '</svg>'; }
 
@@ -54,27 +53,30 @@
   function semanaDe(s) { var d = dt(s); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return iso(d); }
   function diaSem(s) { return (dt(s).getDay() + 6) % 7; }
   function longa(s) { return DIAS[diaSem(s)] + ', ' + dt(s).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' }); }
-  function cod(fm, n) { return fm + ' ' + String(n).padStart(2, '0'); }
+  function quando(s) { return s === B.hoje ? 'Hoje' : s === soma(B.hoje, 1) ? 'Amanhã' : CURTO[diaSem(s)] + ' ' + dm(s); }
+  function hora(s) { return s ? s.slice(8, 10) + '/' + s.slice(5, 7) + ' ' + s.slice(11) : ''; }
   function feito(st) { return st === 'gravado' || st === 'editado' || st === 'postado'; }
   function atrasado(v) { return v.status === 'a_gravar' && v.data < B.hoje; }
   function plural(n, um, varios) { return n + ' ' + (n === 1 ? um : varios); }
-  function situacao(v) {
-    if (atrasado(v)) return '<span class="ponto erro">Atrasado</span>';
-    return '<span class="ponto ' + ST_COR[v.status] + '">' + ST_NOME[v.status] + '</span>';
-  }
-  function frente(k) { return '<span class="frente ' + k + '">' + h(B.frentes[k].nome) + '</span>'; }
+  function situacao(v) { return atrasado(v) ? '<span class="st atrasado">Atrasado</span>' : '<span class="st ' + v.status + '">' + ST_NOME[v.status] + '</span>'; }
+  function frente(k, txt) { var f = B.fr[k] || { nome: k, cor: '#3f3f46' }; return '<span class="frente" style="--c:' + h(f.cor) + '">' + h(txt || f.nome) + '</span>'; }
   function fmOptions(sel, vazio) {
     var out = vazio ? '<option value="">' + vazio + '</option>' : '';
-    ['f', 'c', 'g'].forEach(function (k) {
-      out += '<optgroup label="' + h(B.frentes[k].nome) + '">';
-      B.formatos.filter(function (f) { return f.frente === k; }).forEach(function (f) {
-        out += '<option value="' + f.id + '"' + (f.id === sel ? ' selected' : '') + '>' + h(f.nome) + '</option>';
-      });
-      out += '</optgroup>';
+    B.frentes.forEach(function (fr) {
+      var fs = B.formatos.filter(function (f) { return f.frente === fr.id; }); if (!fs.length) return;
+      out += '<optgroup label="' + h(fr.nome) + '">' + fs.map(function (f) { return '<option value="' + f.id + '"' + (f.id === sel ? ' selected' : '') + '>' + h(f.nome) + '</option>'; }).join('') + '</optgroup>';
     });
     return out;
   }
   function equipe() { return B.eu && B.eu.papel !== 'gravador'; }
+  function guarda(lista) { lista.forEach(function (v) { S.vids[v.id] = v; }); return lista; }
+  function recarregaBase() {
+    return api('GET', '/api/eu').then(function (j) {
+      B.eu = j.usuario; B.hoje = j.hoje; B.frentes = j.frentes; B.formatos = j.formatos.filter(function (f) { return f.ativo !== 0; });
+      B.fr = {}; j.frentes.forEach(function (f) { B.fr[f.id] = f; });
+      B.fmap = {}; j.formatos.forEach(function (f) { B.fmap[f.id] = f; });
+    });
+  }
   function carregaAssuntos(forcar) {
     if (S.assuntos.length && !forcar) return Promise.resolve(S.assuntos);
     return api('GET', '/api/assuntos').then(function (a) {
@@ -85,8 +87,8 @@
   // ---------- entrada ----------
   function telaEntrar(msg) {
     fecharGaveta();
-    app.innerHTML = '<div class="entrar"><form id="fEntrar"><div><p class="rotulo">Instagram do Uélicon</p><h1>Planejador do Uélicon</h1></div>' +
-      '<div class="campo"><label for="eLogin">Usuário ou e-mail</label><input id="eLogin" autocomplete="username" required></div>' +
+    app.innerHTML = '<div class="entrar"><form id="fEntrar"><div><p class="fraca">Instagram do Uélicon</p><h1>Planejador do Uélicon</h1></div>' +
+      '<div class="campo"><label for="eLogin">E-mail ou usuário</label><input id="eLogin" autocomplete="username" required></div>' +
       '<div class="campo"><label for="eSenha">Senha</label><input id="eSenha" type="password" autocomplete="current-password" required></div>' +
       '<p class="erro-txt" id="eErro">' + h(msg || '') + '</p><button class="btn btn-principal" type="submit">Entrar</button></form></div>';
     document.getElementById('fEntrar').addEventListener('submit', function (e) {
@@ -96,12 +98,9 @@
     });
   }
   function iniciar() {
-    return api('GET', '/api/eu').then(function (j) {
-      B.eu = j.usuario; B.hoje = j.hoje; B.frentes = j.frentes; B.formatos = j.formatos;
-      B.fmap = {}; j.formatos.forEach(function (f) { B.fmap[f.id] = f; });
-      var pronto = equipe() ? carregaAssuntos() : Promise.resolve();
-      return pronto.then(function () {
-        if (!location.hash) location.hash = equipe() ? '#semana' : '#hoje'; else rota();
+    return recarregaBase().then(function () {
+      return (equipe() ? carregaAssuntos(true) : Promise.resolve()).then(function () {
+        if (!location.hash) location.hash = equipe() ? '#inicio' : '#hoje'; else rota();
       });
     }).catch(function (e) { if (e.message !== 'sessao') telaEntrar(); });
   }
@@ -109,71 +108,96 @@
   // ---------- moldura ----------
   function moldura(atual, corpo) {
     var itens = equipe()
-      ? [['semana', 'Semana'], ['hoje', 'Folha do dia'], ['assuntos', 'Assuntos'], ['receitas', 'Receitas'], ['andamento', 'Andamento']]
+      ? [['inicio', 'Início'], ['semana', 'Semana'], ['hoje', 'Folha do dia'], ['assuntos', 'Assuntos'], ['andamento', 'Andamento'], ['config', 'Configurações']]
       : [['hoje', 'Folha do dia']];
-    app.innerHTML = '<div class="casca"><nav class="lateral" aria-label="Menu"><div class="marca-sis"><i>P</i><span>Planejador do Uélicon</span></div>' +
+    app.innerHTML = '<header class="topo"><div class="in"><div class="marca-sis"><i>P</i><span>Planejador do Uélicon</span></div><nav aria-label="Menu">' +
       itens.map(function (i) {
         var cont = i[0] === 'assuntos' && S.faltam ? '<span class="cont">' + S.faltam + '</span>' : '';
         return '<a href="#' + i[0] + '" class="' + (i[0] === atual ? 'ativo' : '') + '">' + ic(i[0]) + '<span class="rot-menu">' + i[1] + '</span>' + cont + '</a>';
-      }).join('') +
-      '<div class="pe"><span class="nome">' + h(B.eu.nome) + '</span><button class="btn btn-fantasma btn-mini" data-act="sair" type="button">' + ic('sair') + 'Sair</button></div></nav>' +
-      '<main class="conteudo">' + corpo + '</main></div>';
+      }).join('') + '</nav><div class="quem"><span class="nome">' + h(B.eu.nome) + '</span><button data-act="sair" type="button">' + ic('sair') + 'Sair</button></div></div></header>' +
+      '<main class="conteudo">' + corpo + '</main>';
   }
   function rota() {
     fecharGaveta();
-    var r = (location.hash || '#semana').slice(1).split('/');
+    var r = (location.hash || '#inicio').slice(1).split('/');
     if (!equipe() && r[0] !== 'hoje') { location.hash = '#hoje'; return; }
     if (r[0] === 'hoje') return telaHoje(r[1]);
-    if (r[0] === 'assuntos') return telaAssuntos();
-    if (r[0] === 'receitas') return telaReceitas(r[1]);
+    if (r[0] === 'semana') return telaSemana(r[1]);
+    if (r[0] === 'assuntos') return telaAssuntos(r[1], r[2]);
     if (r[0] === 'andamento') return telaAndamento();
-    return telaSemana(r[1]);
+    if (r[0] === 'config') return telaConfig(r[1], r[2]);
+    return telaInicio();
   }
   window.addEventListener('hashchange', rota);
-  function rotaAtual() { return (location.hash || '#semana').slice(1).split('/')[0]; }
+  function rotaAtual() { return (location.hash || '#inicio').slice(1).split('/')[0]; }
+  function redesenha() { if (rotaAtual() === 'semana' && S.semana) return recarregaSemana(); rota(); return Promise.resolve(); }
+
+  // ---------- Início ----------
+  function telaInicio() {
+    Promise.all([api('GET', '/api/inicio'), carregaAssuntos(true)]).then(function (rs) { desenhaInicio(rs[0]); }).catch(falha);
+  }
+  function tarefa(v, extra) {
+    return '<div class="tarefa" data-act="video" data-id="' + v.id + '"><span class="d' + (v.data === B.hoje ? ' hoje' : '') + '">' + quando(v.data) + '</span>' +
+      '<div class="q"><b>' + h(v.abertura || v.prova || 'Assunto ainda sem frase') + '</b><span>' + frente(v.frente) + h(v.formato_nome) + (extra ? ' · ' + extra : '') + '</span></div>' + situacao(v) + '</div>';
+  }
+  function desenhaInicio(j) {
+    guarda(j.videos_hoje); guarda(j.preencher); guarda(j.atrasados); guarda(j.sem_post);
+    var s = j.semana, okHoje = j.videos_hoje.filter(function (v) { return feito(v.status); }).length;
+    var corpo = '<div class="cabecalho"><div><h1>' + longa(j.hoje) + '</h1><p class="estado">' +
+      (j.videos_hoje.length ? 'Hoje o Uélicon grava ' + plural(j.videos_hoje.length, 'vídeo', 'vídeos') + ' (' + plural(okHoje, 'já gravado', 'já gravados') + ').' : 'Hoje não tem vídeo marcado.') + '</p></div>' +
+      '<div class="acoes"><a class="btn" href="#hoje">Ver a folha de hoje</a><a class="btn btn-principal" href="#semana">Abrir a semana</a></div></div>' +
+      '<div class="regua"><div><span class="r">Gravados na semana</span><span class="v">' + s.gravados + ' de ' + s.total + '</span><span class="c">' + plural(s.postados, 'postado', 'postados') + '</span></div>' +
+      '<div><span class="r">Para preencher</span><span class="v' + (j.preencher.length ? ' erro' : ' ok') + '">' + j.preencher.length + '</span><span class="c">vídeos dos próximos 3 dias</span></div>' +
+      '<div><span class="r">Atrasados</span><span class="v' + (j.atrasados.length ? ' erro' : ' ok') + '">' + j.atrasados.length + '</span><span class="c">o dia passou e não gravou</span></div>' +
+      '<div><span class="r">Falta postar</span><span class="v">' + j.sem_post.length + '</span><span class="c">já gravados</span></div></div>';
+    if (!j.proxima_semana_montada) corpo += '<div class="vazio"><span><b>A semana que vem ainda não foi montada.</b> Monte com a receita e preencha os assuntos antes de segunda.</span><a class="btn btn-principal" href="#semana/' + j.proxima_inicio + '">Montar a semana que vem</a></div>';
+    function bloco(titulo, ajuda, itens, vazio, extra) {
+      return '<div class="bloco"><div class="bloco-cab"><h2>' + titulo + '</h2>' + ajuda + '</div>' +
+        (itens.length ? '<div class="tarefas">' + itens.map(function (v) { return tarefa(v, extra && extra(v)); }).join('') + '</div>' : '<div class="vazio"><span>' + vazio + '</span></div>') + '</div>';
+    }
+    corpo += '<div class="duas">' +
+      bloco('1. Preencher antes de gravar', '<span class="fraca">o que o Uélicon vai falar</span>', j.preencher, 'Tudo dos próximos 3 dias está pronto para gravar.',
+        function (v) { return v.assunto_id ? (v.abertura ? 'falta o que falar' : 'falta a frase') : 'sem assunto'; }) +
+      bloco('2. Gravar hoje', '<a href="#hoje">Folha do dia</a>', j.videos_hoje, 'Nada para gravar hoje.') + '</div><div class="duas">' +
+      bloco('3. Atrasados', '<span class="fraca">mude o dia ou marque como pulado</span>', j.atrasados, 'Nada atrasado.') +
+      bloco('4. Postar', '<span class="fraca">cole o link do post</span>', j.sem_post, 'Tudo que foi gravado já foi postado.') + '</div>';
+    moldura('inicio', corpo);
+  }
 
   // ---------- Semana ----------
   function telaSemana(inicio) {
     var seg = semanaDe(inicio || (S.semana && S.semana.inicio) || B.hoje);
     Promise.all([api('GET', '/api/semana?inicio=' + seg), api('GET', '/api/receitas')]).then(function (rs) {
-      S.semana = rs[0]; S.receitas = rs[1]; desenhaSemana();
+      S.semana = rs[0]; guarda(rs[0].videos); S.receitas = rs[1]; desenhaSemana();
     }).catch(falha);
   }
   function recarregaSemana() {
-    return api('GET', '/api/semana?inicio=' + S.semana.inicio).then(function (j) { S.semana = j; if (rotaAtual() === 'semana') desenhaSemana(); });
+    return api('GET', '/api/semana?inicio=' + S.semana.inicio).then(function (j) { S.semana = j; guarda(j.videos); if (rotaAtual() === 'semana') desenhaSemana(); });
   }
   function desenhaSemana() {
     var s = S.semana, vs = s.videos, ativos = vs.filter(function (v) { return v.status !== 'pulado'; });
-    var nf = ativos.filter(function (v) { return feito(v.status); }).length;
-    var np = ativos.filter(function (v) { return v.status === 'postado'; }).length;
-    var nat = ativos.filter(atrasado).length;
-    var nfalta = ativos.filter(function (v) { return !v.completo && !feito(v.status); }).length;
+    var nf = ativos.filter(function (v) { return feito(v.status); }).length, np = ativos.filter(function (v) { return v.status === 'postado'; }).length;
+    var nat = ativos.filter(atrasado).length, nfalta = ativos.filter(function (v) { return !v.completo && !feito(v.status); }).length;
     var esta = semanaDe(B.hoje) === s.inicio;
-    var estado = !vs.length ? 'Semana sem plano.' : plural(ativos.length, 'vídeo planejado', 'vídeos planejados') + ', ' + plural(nf, 'gravado', 'gravados') + (nat ? ', ' + plural(nat, 'atrasado', 'atrasados') : '') + '.';
-    var corpo = '<div class="cabecalho"><div><h1>Semana de ' + dm(s.inicio) + ' a ' + dm(soma(s.inicio, 5)) + '</h1><p class="estado">' + estado + '</p></div>' +
+    var corpo = '<div class="cabecalho"><div><h1>Semana de ' + dm(s.inicio) + ' a ' + dm(soma(s.inicio, 5)) + (esta ? ' <span class="selo selo-escuro">Esta semana</span>' : '') + '</h1><p class="estado">' +
+      (vs.length ? plural(ativos.length, 'vídeo', 'vídeos') + ' no plano, ' + plural(nf, 'gravado', 'gravados') + (nat ? ', ' + plural(nat, 'atrasado', 'atrasados') : '') + (nfalta ? ', ' + nfalta + ' sem assunto pronto' : '') + '.' : 'Semana sem plano.') + '</p></div>' +
       '<div class="acoes"><div class="linha" style="gap:4px"><a class="btn btn-icone" href="#semana/' + soma(s.inicio, -7) + '" aria-label="Semana anterior">' + ic('esq') + '</a>' +
-      (esta ? '' : '<a class="btn" href="#semana/' + semanaDe(B.hoje) + '">Esta semana</a>') +
-      '<a class="btn btn-icone" href="#semana/' + soma(s.inicio, 7) + '" aria-label="Próxima semana">' + ic('dir') + '</a></div>' +
+      (esta ? '' : '<a class="btn" href="#semana/' + semanaDe(B.hoje) + '">Esta semana</a>') + '<a class="btn btn-icone" href="#semana/' + soma(s.inicio, 7) + '" aria-label="Próxima semana">' + ic('dir') + '</a></div>' +
       '<select class="sel" id="selReceita" aria-label="Receita">' + S.receitas.map(function (r) { return '<option value="' + r.id + '">' + h(r.nome) + '</option>'; }).join('') + '</select>' +
       '<button class="btn ' + (vs.length ? '' : 'btn-principal') + '" type="button" data-act="montar">' + (vs.length ? 'Remontar com a receita' : 'Montar a semana') + '</button></div></div>';
-    if (S.confirmar) corpo += '<div class="confirma"><span>Os vídeos que ainda estão "a gravar" serão trocados pelos da receita. O que já foi gravado fica.</span>' +
-      '<button class="btn btn-principal btn-mini" type="button" data-act="montar-sim">Trocar</button><button class="btn btn-mini" type="button" data-act="montar-nao">Cancelar</button></div>';
-    if (!vs.length) {
-      corpo += '<div class="vazio"><span>Esta semana ainda não tem vídeos. Escolha uma receita e monte: cada vídeo já vem com um assunto do banco.</span>' +
-        '<button class="btn btn-principal" type="button" data-act="montar">Montar a semana</button></div>';
-    } else {
-      corpo += '<div class="regua"><div><span class="r">Gravados</span><span class="v">' + nf + ' de ' + ativos.length + '</span><span class="c">' + plural(np, 'postado', 'postados') + '</span></div>' +
-        ['f', 'c', 'g'].map(function (k) {
-          var d = ativos.filter(function (v) { return v.frente === k; });
-          return '<div><span class="r">' + B.frentes[k].nome + '</span><span class="v">' + d.length + '</span><span class="c">' + plural(d.filter(function (v) { return feito(v.status); }).length, 'gravado', 'gravados') + '</span></div>';
-        }).join('') +
-        '<div><span class="r">Sem assunto pronto</span><span class="v' + (nfalta ? ' erro' : '') + '">' + nfalta + '</span><span class="c">' + (nfalta ? '<a href="#assuntos">Preencher assuntos</a>' : 'tudo pronto para gravar') + '</span></div></div>';
-    }
+    if (S.confirmar) corpo += '<div class="confirma"><span>Os vídeos "a gravar" serão trocados pelos da receita. O que já foi gravado fica.</span><button class="btn btn-principal btn-mini" type="button" data-act="montar-sim">Trocar</button><button class="btn btn-mini" type="button" data-act="montar-nao">Cancelar</button></div>';
+    if (!vs.length) corpo += '<div class="vazio"><span>Esta semana ainda não tem vídeos. Escolha uma receita e monte: cada vídeo já vem com um assunto do banco.</span><button class="btn btn-principal" type="button" data-act="montar">Montar a semana</button></div>';
+    else corpo += '<div class="regua"><div><span class="r">Gravados</span><span class="v">' + nf + ' de ' + ativos.length + '</span><span class="c">' + plural(np, 'postado', 'postados') + '</span></div>' +
+      B.frentes.map(function (fr) {
+        var d = ativos.filter(function (v) { return v.frente === fr.id; }); if (!d.length) return '';
+        return '<div><span class="r">' + h(fr.nome) + '</span><span class="v">' + d.length + '</span><span class="c">' + plural(d.filter(function (v) { return feito(v.status); }).length, 'gravado', 'gravados') + '</span></div>';
+      }).join('') +
+      '<div><span class="r">Sem assunto pronto</span><span class="v' + (nfalta ? ' erro' : ' ok') + '">' + nfalta + '</span><span class="c">' + (nfalta ? 'clique no vídeo e preencha' : 'tudo pronto') + '</span></div></div>';
     corpo += '<div class="quadro">' + [0, 1, 2, 3, 4, 5].map(function (i) {
       var d = soma(s.inicio, i), doDia = vs.filter(function (v) { return v.data === d; });
       var at = doDia.filter(function (v) { return v.status !== 'pulado'; }), ok = at.filter(function (v) { return feito(v.status); }).length;
-      return '<section class="dia' + (d === B.hoje ? ' hoje' : '') + '" aria-label="' + DIAS[i] + '"><div class="dia-cab"><span><b>' + CURTO[i] + '</b><span class="data">' + dm(d) + '</span></span>' +
-        (at.length ? '<span class="conta' + (ok === at.length ? ' todo' : '') + '">' + ok + ' de ' + at.length + '</span>' : '') + '</div>' +
+      return '<section class="dia' + (d === B.hoje ? ' hoje' : '') + '" aria-label="' + DIAS[i] + '"><div class="dia-cab"><div class="nome"><b>' + DIAS[i] + '</b><span>' + dm(d) + (d === B.hoje ? ' · hoje' : '') + '</span></div>' +
+        (at.length ? '<span class="conta' + (ok === at.length ? ' todo' : '') + '">' + ok + '/' + at.length + '</span>' : '') + '</div>' +
         (doDia.length ? doDia.map(cartao).join('') : '<p class="livre">Dia livre</p>') +
         '<div class="mais"><select data-add="' + d + '" aria-label="Pôr vídeo em ' + DIAS[i] + '">' + fmOptions('', '+ Vídeo') + '</select></div></section>';
     }).join('') + '</div>';
@@ -181,212 +205,247 @@
   }
   function cartao(v) {
     var txt = v.abertura || v.prova || '';
-    var aviso = !v.assunto_id ? '<span class="selo selo-erro">Sem assunto</span>' : (!v.completo && !feito(v.status) ? '<span class="selo selo-atencao">Falta preencher</span>' : '');
+    var falta = !v.assunto_id ? '<span class="falta">Escolher assunto</span>' : (!v.completo && !feito(v.status) ? '<span class="falta atencao">' + (v.abertura ? 'Falta o que falar' : 'Falta a frase') + '</span>' : '');
     return '<button type="button" class="cartao-video' + (feito(v.status) || v.status === 'pulado' ? ' feito' : '') + '" data-act="video" data-id="' + v.id + '">' +
       '<span class="topo-c">' + frente(v.frente) + situacao(v) + '</span>' +
-      '<span class="fm">' + h(v.formato_nome) + '</span>' +
-      (txt ? '<span class="ab">' + h(txt) + '</span>' : '') + aviso + '</button>';
+      '<span class="ab' + (txt ? '' : ' vazia') + '">' + h(txt || 'Sem frase ainda') + '</span>' +
+      '<span class="fm">' + h(v.formato_nome) + '</span>' + falta + '</button>';
   }
 
   // ---------- Gaveta ----------
-  function abrirGaveta(html) {
-    document.getElementById('painel').innerHTML = html; document.getElementById('gaveta').hidden = false;
-    var f = document.querySelector('#painel .corpo-gaveta select, #painel .corpo-gaveta textarea, #painel .corpo-gaveta input'); if (f) f.focus();
-  }
+  function abrirGaveta(html) { document.getElementById('painel').innerHTML = html; document.getElementById('gaveta').hidden = false; }
   function fecharGaveta() { var g = document.getElementById('gaveta'); if (g) g.hidden = true; }
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') fecharGaveta(); });
   function cabGaveta(rot, titulo) {
-    return '<header><div><p class="rotulo">' + rot + '</p><h2>' + titulo + '</h2></div><button class="btn btn-fantasma btn-icone" type="button" data-act="fechar" aria-label="Fechar">' + ic('x') + '</button></header>';
+    return '<header><div><p class="rot">' + rot + '</p><h2>' + titulo + '</h2></div><button class="btn btn-fantasma btn-icone" type="button" data-act="fechar" aria-label="Fechar">' + ic('x') + '</button></header>';
+  }
+  function rodape(esq, acao, id, rotulo, extra) {
+    return '<footer>' + (esq || '<span></span>') + '<div class="linha"><button class="btn" type="button" data-act="fechar">Cancelar</button><button class="btn btn-principal" type="button" data-act="' + acao + '" data-id="' + h(id || '') + '"' + (extra || '') + '>' + (rotulo || 'Salvar') + '</button></div></footer>';
   }
 
   function gavetaVideo(id) {
-    var v = S.semana.videos.filter(function (x) { return x.id === id; })[0]; if (!v) return;
+    var v = S.vids[id]; if (!v) return;
     carregaAssuntos().then(function (lista) {
       var doFm = lista.filter(function (a) { return a.formato === v.formato && (a.ativo || a.id === v.assunto_id); });
       var fm = B.fmap[v.formato];
-      abrirGaveta(cabGaveta(longa(v.data), h(fm.nome)) + '<div class="corpo-gaveta">' +
-        '<div class="campo"><label>Situação</label><div class="segmentos">' + ['a_gravar', 'gravado', 'editado', 'postado', 'pulado'].map(function (k) {
+      abrirGaveta(cabGaveta(frente(v.frente) + ' ' + h(longa(v.data)), h(fm.nome)) + '<div class="corpo-gaveta">' +
+        '<div class="secao"><div class="sc"><h3>Situação</h3>' + situacao(v) + '</div><div class="segmentos">' + ['a_gravar', 'gravado', 'editado', 'postado', 'pulado'].map(function (k) {
           return '<button type="button" data-act="status" data-id="' + v.id + '" data-st="' + k + '" aria-pressed="' + (v.status === k) + '">' + ST_NOME[k] + '</button>';
-        }).join('') + '</div>' + (atrasado(v) ? '<span class="ajuda" style="color:var(--erro)">O dia já passou e este vídeo não foi gravado.</span>' : '') + '</div>' +
-        '<div class="campo"><label for="gAs">Assunto</label><select id="gAs" data-vid="' + v.id + '"><option value="">Escolher assunto</option>' +
+        }).join('') + '</div>' + (atrasado(v) ? '<span class="falta">O dia passou e não foi gravado. Mude o dia ou marque como pulado.</span>' : '') + '</div>' +
+        '<div class="secao"><div class="sc"><h3>O que o Uélicon vai falar</h3>' + (v.assunto_id ? (v.completo ? '<span class="selo selo-ok">Pronto</span>' : '<span class="selo selo-atencao">Falta preencher</span>') : '') + '</div>' +
+        '<div class="campo"><label for="gAs">Assunto do banco</label><select id="gAs" data-vid="' + v.id + '"><option value="">Escolher assunto</option>' +
         doFm.map(function (a) {
           return '<option value="' + a.id + '"' + (a.id === v.assunto_id ? ' selected' : '') + '>' + String(a.numero).padStart(2, '0') + ' · ' + h(a.abertura || a.prova || 'sem frase') +
-            (a.completo ? '' : ' (falta preencher)') + (a.ultimo_uso && a.id !== v.assunto_id ? ' · usado em ' + dm(a.ultimo_uso) : '') + '</option>';
-        }).join('') + '</select></div>' +
-        (v.assunto_id ? '<div class="roteiro">' +
-          (v.abertura ? '<p class="abre">“' + h(v.abertura) + '”</p>' : '<p class="ponto erro">Falta a frase de abertura</p>') +
-          (v.pontos ? '<p class="tinta-2">' + h(v.pontos) + '</p>' : '<p class="ponto atencao">Falta o que falar</p>') +
-          (v.prova ? '<p class="fraca">Prova: ' + h(v.prova) + '</p>' : '') +
-          '<div><button class="btn btn-mini" type="button" data-act="editar-assunto" data-id="' + v.assunto_id + '">Preencher o assunto</button></div></div>' : '') +
-        '<div class="campo"><label for="gLink">Link do post no Instagram</label><input id="gLink" type="url" inputmode="url" placeholder="https://www.instagram.com/p/..." value="' + h(v.link) + '"></div>' +
-        '<div class="campo"><label for="gPal">Palavra para comentar</label><input id="gPal" value="' + h(v.palavra_final) + '"><span class="ajuda">Gatilho do ManyChat. Formação e imersão vão para o Daniel.</span></div>' +
-        '<div class="campo"><label for="gFm">Formato</label><select id="gFm" data-vid="' + v.id + '">' + fmOptions(v.formato) + '</select><span class="ajuda">' + h(fm.dica) + '</span></div>' +
-        '<div class="campo"><label for="gData">Dia</label><input id="gData" type="date" value="' + v.data + '"></div>' +
-        '<div class="campo"><label for="gNota">Nota</label><textarea id="gNota" placeholder="Ex.: gravar com o print do cliente">' + h(v.nota) + '</textarea></div>' +
-        (v.atualizado_por ? '<p class="fraca">Última mudança: ' + h(v.atualizado_por) + ', ' + h(v.atualizado_em.slice(8, 10) + '/' + v.atualizado_em.slice(5, 7) + ' ' + v.atualizado_em.slice(11)) + '</p>' : '') +
-        '</div><footer><button class="btn btn-fantasma btn-perigo" type="button" data-act="apagar-video" data-id="' + v.id + '">Tirar da semana</button>' +
-        '<div class="linha"><button class="btn" type="button" data-act="fechar">Cancelar</button><button class="btn btn-principal" type="button" data-act="salvar-video" data-id="' + v.id + '">Salvar</button></div></footer>');
+            (a.completo ? '' : ' (falta preencher)') + (a.ultimo_uso && a.id !== v.assunto_id ? ' · usado ' + dm(a.ultimo_uso) : '') + '</option>';
+        }).join('') + '</select>' + (doFm.length ? '' : '<span class="ajuda">Este tópico não tem assunto. <a href="#assuntos/' + v.frente + '/' + v.formato + '">Criar no banco</a>.</span>') + '</div>' +
+        (v.assunto_id ? '<div class="campo"><label for="aAb">Frase de abertura</label><textarea id="aAb" placeholder="O que ele fala nos 3 primeiros segundos">' + h(v.abertura) + '</textarea></div>' +
+          '<div class="campo"><label for="aPo">O que falar</label><textarea id="aPo" style="min-height:100px" placeholder="A explicação em 2 ou 3 frases simples, com um exemplo do dia a dia">' + h(v.pontos) + '</textarea></div>' +
+          '<div class="campo"><label for="aPr">Prova ou exemplo</label><input id="aPr" value="' + h(v.prova) + '" placeholder="Ex.: de 2.500 para 55 mil de limite"><span class="ajuda">Muda o assunto no banco também: vale para as próximas vezes que ele for usado.</span></div>' : '') +
+        '<div class="campo"><label>Como gravar</label><ol class="passos">' + fm.passos.map(function (p) { return '<li>' + h(p) + '</li>'; }).join('') + '</ol></div></div>' +
+        '<div class="secao"><h3>Post</h3><div class="campo"><label for="gLink">Link do post no Instagram</label><input id="gLink" type="url" inputmode="url" placeholder="https://www.instagram.com/p/..." value="' + h(v.link) + '"></div>' +
+        '<div class="campo"><label for="gPal">Palavra para comentar</label><input id="gPal" value="' + h(v.palavra_final) + '"><span class="ajuda">Gatilho do ManyChat.</span></div></div>' +
+        '<div class="secao"><h3>Plano</h3><div class="grade-campos"><div class="campo"><label for="gFm">Tópico</label><select id="gFm" data-vid="' + v.id + '">' + fmOptions(v.formato) + '</select></div>' +
+        '<div class="campo"><label for="gData">Dia</label><input id="gData" type="date" value="' + v.data + '"></div></div>' +
+        '<div class="campo"><label for="gNota">Nota</label><textarea id="gNota" placeholder="Ex.: gravar com o print do cliente">' + h(v.nota) + '</textarea></div></div>' +
+        (v.atualizado_por ? '<p class="fraca">Última mudança: ' + h(v.atualizado_por) + ', ' + hora(v.atualizado_em) + '</p>' : '') +
+        '</div>' + rodape('<button class="btn btn-fantasma btn-perigo" type="button" data-act="apagar-video" data-id="' + v.id + '">Tirar da semana</button>', 'salvar-video', v.id));
     }).catch(falha);
   }
 
   // ---------- Folha do dia ----------
-  function telaHoje(d) {
-    api('GET', '/api/dia?data=' + (d || B.hoje)).then(function (j) { S.dia = j; desenhaHoje(); }).catch(falha);
-  }
+  function telaHoje(d) { return api('GET', '/api/dia?data=' + (d || B.hoje)).then(function (j) { S.dia = j; guarda(j.videos); desenhaHoje(); }).catch(falha); }
   function desenhaHoje() {
     var j = S.dia, vs = j.videos, ok = vs.filter(function (v) { return feito(v.status); }).length;
     var corpo = '<div class="cabecalho"><div><h1>' + (j.data === B.hoje ? 'Hoje, ' : '') + longa(j.data) + '</h1><p class="estado">' +
-      (vs.length ? ok + ' de ' + plural(vs.length, 'vídeo gravado', 'vídeos gravados') + (ok === vs.length ? '. Dia completo.' : '.') : 'Nenhum vídeo para este dia.') + '</p></div>' +
+      (vs.length ? '<b>' + ok + ' de ' + vs.length + '</b> ' + (vs.length === 1 ? 'vídeo gravado' : 'vídeos gravados') + (ok === vs.length ? '. Dia completo.' : '.') : 'Nenhum vídeo para este dia.') + '</p></div>' +
       '<div class="acoes nao-imprime"><div class="linha" style="gap:4px"><a class="btn btn-icone" href="#hoje/' + soma(j.data, -1) + '" aria-label="Dia anterior">' + ic('esq') + '</a>' +
       (j.data !== B.hoje ? '<a class="btn" href="#hoje">Hoje</a>' : '') + '<a class="btn btn-icone" href="#hoje/' + soma(j.data, 1) + '" aria-label="Próximo dia">' + ic('dir') + '</a></div>' +
       '<button class="btn" type="button" data-act="imprimir">' + ic('imprimir') + 'Imprimir</button></div></div><div class="folha">';
-    if (!vs.length) corpo += '<div class="vazio"><span>Nada para gravar neste dia.' + (j.proximo ? ' O próximo dia com vídeo é ' + longa(j.proximo).toLowerCase() + '.' : '') + '</span>' +
-      (j.proximo ? '<a class="btn" href="#hoje/' + j.proximo + '">Ver o próximo</a>' : '') + '</div>';
+    if (!vs.length) corpo += '<div class="vazio"><span>Nada para gravar neste dia.' + (j.proximo ? ' O próximo é ' + longa(j.proximo).toLowerCase() + '.' : '') + '</span>' + (j.proximo ? '<a class="btn" href="#hoje/' + j.proximo + '">Ver o próximo</a>' : '') + '</div>';
     vs.forEach(function (v, i) {
       var fm = B.fmap[v.formato], f = feito(v.status);
-      corpo += '<article class="video-folha' + (f ? ' feito' : '') + '"><span class="n">' + (f ? ic('check') : i + 1) + '</span><div class="c">' +
-        '<div class="linha">' + frente(v.frente) + '<span class="fraca">' + h(fm.nome) + (v.assunto_id ? ' · ' + cod(v.formato, v.a_numero) : '') + '</span></div>' +
-        (v.abertura ? '<p class="abre">“' + h(v.abertura) + '”</p>' : '<p class="ponto atencao">A frase de abertura ainda vai ser preenchida.</p>') +
-        (v.pontos ? '<p class="falar">' + h(v.pontos) + '</p>' : '') +
-        (v.prova ? '<p class="tinta-2"><b>Prova:</b> ' + h(v.prova) + '</p>' : '') +
-        '<ol>' + fm.passos.map(function (p) { return '<li>' + h(p) + '</li>'; }).join('') + '</ol>' +
-        (v.nota ? '<p class="fraca">Nota: ' + h(v.nota) + '</p>' : '') +
-        '<div class="rodape"><span>' + (v.palavra_final ? 'No fim: “Comenta <span class="palavra">' + h(v.palavra_final) + '</span> que eu te mando.”' : '') + '</span>' +
-        '<button type="button" class="btn ' + (f ? '' : 'btn-principal') + ' nao-imprime" data-act="gravei" data-id="' + v.id + '" data-st="' + v.status + '">' +
-        (f ? ic('check') + 'Gravado' : 'Marcar como gravado') + '</button></div></div></article>';
+      corpo += '<article class="video-folha' + (f ? ' feito' : '') + '"><div class="cab-v"><div class="linha"><span class="n">Vídeo ' + (i + 1) + '</span>' + frente(v.frente) + '<span class="fraca">' + h(fm.nome) + '</span></div>' + situacao(v) + '</div><div class="c">' +
+        '<div><p class="rot-folha">Comece com</p>' + (v.abertura ? '<p class="abre">“' + h(v.abertura) + '”</p>' : '<p class="falta atencao">A frase ainda vai ser preenchida.</p>') + '</div>' +
+        (v.pontos ? '<div><p class="rot-folha">Depois fale</p><p class="falar">' + h(v.pontos) + '</p></div>' : '') +
+        (v.prova ? '<div><p class="rot-folha">Mostre a prova</p><p>' + h(v.prova) + '</p></div>' : '') +
+        '<div><p class="rot-folha">Como gravar</p><ol>' + fm.passos.map(function (p) { return '<li>' + h(p) + '</li>'; }).join('') + '</ol></div>' +
+        (v.nota ? '<p class="tinta-2"><b>Nota:</b> ' + h(v.nota) + '</p>' : '') +
+        '<div class="fecha"><span>' + (v.palavra_final ? 'No fim: “Comenta <span class="palavra">' + h(v.palavra_final) + '</span> que eu te mando.”' : '') + '</span>' +
+        '<button type="button" class="btn ' + (f ? '' : 'btn-principal') + ' nao-imprime" data-act="gravei" data-id="' + v.id + '" data-st="' + v.status + '">' + (f ? ic('check') + 'Gravado' : 'Marcar como gravado') + '</button></div></div></article>';
     });
-    corpo += '<p class="lembretes"><span>Celular em pé, rosto perto, lugar claro.</span><span>A frase de abertura nos 3 primeiros segundos.</span><span>Um assunto por vídeo.</span><span>Sem nome nem CPF de cliente na tela.</span></p></div>';
+    corpo += '<div class="lembretes"><span>Celular em pé, rosto perto, lugar claro</span><span>A frase de abertura nos 3 primeiros segundos</span><span>Um assunto por vídeo</span><span>Sem nome nem CPF de cliente na tela</span></div></div>';
     moldura('hoje', corpo);
   }
 
-  // ---------- Assuntos ----------
-  function telaAssuntos() { carregaAssuntos(true).then(desenhaAssuntos).catch(falha); }
-  function desenhaAssuntos() {
-    var lista = S.assuntos, prontos = lista.filter(function (a) { return a.ativo && a.completo; }).length;
-    var f = S.filtro;
-    var visiveis = lista.filter(function (a) {
-      if (f === 'falta') return a.ativo && !a.completo;
-      if (f === 'todos') return a.ativo;
-      if (f === 'arquivados') return !a.ativo;
-      return a.formato === f && a.ativo;
-    });
-    var ordem = {}; B.formatos.forEach(function (x, i) { ordem[x.id] = i; });
-    visiveis.sort(function (a, b) { return (ordem[a.formato] - ordem[b.formato]) || (a.numero - b.numero); });
-    var corpo = '<div class="cabecalho"><div><h1>Assuntos</h1><p class="estado">' + plural(prontos, 'assunto pronto', 'assuntos prontos') + ', ' + S.faltam + ' para preencher. A semana puxa daqui o que está há mais tempo sem uso.</p></div>' +
-      '<div class="acoes"><select class="sel" id="selFiltro" aria-label="Mostrar">' +
-      '<option value="falta"' + (f === 'falta' ? ' selected' : '') + '>Falta preencher (' + S.faltam + ')</option>' +
-      '<option value="todos"' + (f === 'todos' ? ' selected' : '') + '>Todos os assuntos</option>' +
-      ['f', 'c', 'g'].map(function (k) {
-        return '<optgroup label="' + h(B.frentes[k].nome) + '">' + B.formatos.filter(function (x) { return x.frente === k; }).map(function (x) {
-          return '<option value="' + x.id + '"' + (f === x.id ? ' selected' : '') + '>' + h(x.nome) + '</option>'; }).join('') + '</optgroup>';
-      }).join('') + '<option value="arquivados"' + (f === 'arquivados' ? ' selected' : '') + '>Arquivados</option></select>' +
-      '<select class="sel" id="selNovo" aria-label="Novo assunto">' + fmOptions('', 'Novo assunto em...') + '</select></div></div>';
-    if (!visiveis.length) {
-      corpo += '<div class="vazio"><span>' + (f === 'falta' ? 'Todos os assuntos estão prontos para gravar.' : 'Nenhum assunto aqui ainda.') + '</span>' +
-        (f === 'falta' ? '<button class="btn" type="button" data-act="filtro" data-v="todos">Ver todos</button>' : '') + '</div>';
-    } else {
-      var linhas = '', grupo = '';
-      visiveis.forEach(function (a) {
-        var fm = B.fmap[a.formato];
-        if (fm.id !== grupo) { grupo = fm.id; linhas += '<tr class="grupo-linha"><td colspan="5">' + frente(fm.frente) + ' · ' + h(fm.nome) + '</td></tr>'; }
-        linhas += '<tr data-act="editar-assunto" data-id="' + a.id + '" class="' + (a.ativo ? '' : 'apagado') + '"><td class="curto fraca">' + String(a.numero).padStart(2, '0') + '</td>' +
-          '<td>' + (a.abertura ? h(a.abertura) : '<span class="fraca">' + h(a.prova || 'Sem frase de abertura') + '</span>') + '</td>' +
-          '<td class="curto">' + (a.completo ? '<span class="selo selo-ok">Pronto</span>' : '<span class="selo selo-atencao">Falta ' + (!(a.abertura || '').trim() ? 'a frase' : 'o que falar') + '</span>') + '</td>' +
-          '<td class="num">' + (a.vezes ? plural(a.vezes, 'vez', 'vezes') : 'Nunca') + '</td><td class="num fraca">' + (a.ultimo_uso ? dm(a.ultimo_uso) : 'sem uso') + '</td></tr>';
-      });
-      corpo += '<div class="tabela-caixa"><table class="tabela"><thead><tr><th>Nº</th><th>Frase de abertura</th><th>Situação</th><th class="num">Usado</th><th class="num">Última vez</th></tr></thead><tbody>' + linhas + '</tbody></table></div>';
+  // ---------- Assuntos: abas de produto, subabas de tópico ----------
+  function telaAssuntos(aba, top) { carregaAssuntos(true).then(function () { desenhaAssuntos(aba, top); }).catch(falha); }
+  function faltaEm(filtro) { return S.assuntos.filter(function (a) { return a.ativo && !a.completo && filtro(a); }).length; }
+  function desenhaAssuntos(aba, top) {
+    var fr = B.fr[aba] || B.frentes[0];
+    var topicos = B.formatos.filter(function (f) { return f.frente === fr.id; });
+    var fm = B.fmap[top] && B.fmap[top].frente === fr.id && B.fmap[top].ativo !== 0 ? B.fmap[top] : topicos[0];
+    var corpo = '<div class="cabecalho"><div><h1>Assuntos</h1><p class="estado">Cada assunto vira um vídeo: a frase de abertura e o que falar. A semana puxa daqui o que está há mais tempo sem uso.</p></div>' +
+      '<div class="acoes">' + (S.faltam ? '<span class="selo selo-atencao">' + S.faltam + ' para preencher</span>' : '<span class="selo selo-ok">Tudo preenchido</span>') + '</div></div>' +
+      '<div class="abas" role="tablist">' + B.frentes.map(function (f) {
+        var n = faltaEm(function (a) { return B.fmap[a.formato] && B.fmap[a.formato].frente === f.id; });
+        return '<a href="#assuntos/' + f.id + '" class="' + (f.id === fr.id ? 'ativo' : '') + '" style="--c:' + h(f.cor) + '"><span class="bola"></span>' + h(f.nome) + (n ? '<span class="cont">' + n + '</span>' : '') + '</a>';
+      }).join('') + '<button type="button" class="nova" data-act="nova-aba">' + ic('mais') + 'Nova aba</button></div>';
+    corpo += '<div class="bloco-cab"><div class="subabas">' + topicos.map(function (t) {
+      var n = S.assuntos.filter(function (a) { return a.formato === t.id && a.ativo; }).length;
+      var f = faltaEm(function (a) { return a.formato === t.id; });
+      return '<a href="#assuntos/' + fr.id + '/' + t.id + '" class="' + (fm && t.id === fm.id ? 'ativo' : '') + '">' + h(t.nome) + ' <span class="n">' + n + '</span>' + (f ? '<span class="cont">' + f + '</span>' : '') + '</a>';
+    }).join('') + '<button type="button" class="nova" data-act="novo-topico" data-fr="' + fr.id + '">' + ic('mais') + 'Novo tópico</button></div>' +
+      '<button class="btn btn-fantasma btn-mini" type="button" data-act="editar-aba" data-fr="' + fr.id + '">' + ic('lapis') + 'Editar a aba</button></div>';
+    if (!fm) {
+      corpo += '<div class="vazio"><span>A aba ' + h(fr.nome) + ' ainda não tem tópicos. Crie o primeiro, por exemplo "Caixinha de perguntas" ou "Depoimento".</span><button class="btn btn-principal" type="button" data-act="novo-topico" data-fr="' + fr.id + '">Novo tópico</button></div>';
+      return moldura('assuntos', corpo);
     }
+    var lista = S.assuntos.filter(function (a) { return a.formato === fm.id; }).sort(function (a, b) { return (b.ativo - a.ativo) || (a.numero - b.numero); });
+    corpo += '<div class="topico"><div class="t"><h2>' + h(fm.nome) + '</h2><span class="tinta-2">' + h(fm.dica || 'Sem descrição.') + ' Palavra: <span class="palavra">' + h(fm.palavra) + '</span></span>' +
+      (fm.passos.length ? '<ol>' + fm.passos.map(function (p) { return '<li>' + h(p) + '</li>'; }).join('') + '</ol>' : '') + '</div>' +
+      '<div class="linha"><button class="btn" type="button" data-act="editar-topico" data-fm="' + fm.id + '">' + ic('lapis') + 'Editar tópico</button><button class="btn btn-principal" type="button" data-act="novo-assunto" data-fm="' + fm.id + '">' + ic('mais') + 'Novo assunto</button></div></div>';
+    if (!lista.length) corpo += '<div class="vazio"><span>Nenhum assunto neste tópico. Cada um vira um vídeo.</span><button class="btn btn-principal" type="button" data-act="novo-assunto" data-fm="' + fm.id + '">Novo assunto</button></div>';
+    else corpo += '<div class="tabela-caixa"><table class="tabela"><thead><tr><th>Nº</th><th>Frase de abertura</th><th>Situação</th><th class="num">Usado</th><th class="num">Última vez</th></tr></thead><tbody>' +
+      lista.map(function (a) {
+        return '<tr data-act="editar-assunto" data-id="' + a.id + '" class="' + (a.ativo ? '' : 'apagado') + '"><td class="curto fraca">' + String(a.numero).padStart(2, '0') + '</td>' +
+          '<td class="forte">' + (a.abertura ? h(a.abertura) : '<span class="fraca">' + h(a.prova || 'Sem frase de abertura') + '</span>') + '</td>' +
+          '<td class="curto">' + (!a.ativo ? '<span class="selo">Arquivado</span>' : a.completo ? '<span class="selo selo-ok">Pronto</span>' : '<span class="falta atencao">Falta ' + (!(a.abertura || '').trim() ? 'a frase' : 'o que falar') + '</span>') + '</td>' +
+          '<td class="num">' + (a.vezes ? plural(a.vezes, 'vez', 'vezes') : 'nunca') + '</td><td class="num fraca">' + (a.ultimo_uso ? dm(a.ultimo_uso) : 'sem uso') + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
     moldura('assuntos', corpo);
   }
   function gavetaAssunto(id) {
     carregaAssuntos().then(function (lista) {
       var a = lista.filter(function (x) { return x.id === id; })[0]; if (!a) return;
       var fm = B.fmap[a.formato];
-      abrirGaveta(cabGaveta(h(B.frentes[fm.frente].nome) + ' · ' + cod(a.formato, a.numero), h(fm.nome)) + '<div class="corpo-gaveta">' +
-        '<div class="roteiro"><p class="tinta-2">' + h(fm.dica) + '</p><ol>' + fm.passos.map(function (p) { return '<li>' + h(p) + '</li>'; }).join('') + '</ol></div>' +
-        '<div class="campo"><label for="aAb">Frase de abertura</label><textarea id="aAb" placeholder="Ex.: Meu nome tá limpo e o banco negou. Por quê?">' + h(a.abertura) + '</textarea><span class="ajuda">É o que o Uélicon fala nos 3 primeiros segundos.</span></div>' +
+      abrirGaveta(cabGaveta(frente(fm.frente) + ' ' + h(fm.nome) + ' · nº ' + String(a.numero).padStart(2, '0'), a.abertura ? 'Editar assunto' : 'Novo assunto') + '<div class="corpo-gaveta">' +
+        '<div class="campo"><label for="aAb">Frase de abertura</label><textarea id="aAb" placeholder="Ex.: Meu nome tá limpo e o banco negou. Por quê?">' + h(a.abertura) + '</textarea><span class="ajuda">O que o Uélicon fala nos 3 primeiros segundos.</span></div>' +
         '<div class="campo"><label for="aPo">O que falar</label><textarea id="aPo" style="min-height:120px" placeholder="A explicação em 2 ou 3 frases simples, com um exemplo do dia a dia.">' + h(a.pontos) + '</textarea></div>' +
         '<div class="campo"><label for="aPr">Prova ou exemplo</label><input id="aPr" placeholder="Ex.: de 2.500 para 55 mil de limite" value="' + h(a.prova) + '"><span class="ajuda">Opcional. Número ou caso real, sem nome nem CPF.</span></div>' +
         '<div class="campo"><label for="aPa">Palavra para comentar</label><input id="aPa" value="' + h(a.palavra) + '"></div>' +
-        '<p class="fraca">' + (a.vezes ? 'Usado ' + plural(a.vezes, 'vez', 'vezes') + ', a última em ' + dm(a.ultimo_uso) + (a.postados ? ', ' + plural(a.postados, 'postado', 'postados') : '') + '.' : 'Ainda não foi usado.') + '</p>' +
-        '</div><footer><button class="btn btn-fantasma' + (a.ativo ? ' btn-perigo' : '') + '" type="button" data-act="arquivar-assunto" data-id="' + a.id + '" data-ativo="' + (a.ativo ? 0 : 1) + '">' + (a.ativo ? 'Arquivar' : 'Voltar a usar') + '</button>' +
-        '<div class="linha"><button class="btn" type="button" data-act="fechar">Cancelar</button><button class="btn btn-principal" type="button" data-act="salvar-assunto" data-id="' + a.id + '">Salvar</button></div></footer>');
+        '<div class="campo"><label>Como gravar (vem do tópico)</label><ol class="passos">' + fm.passos.map(function (p) { return '<li>' + h(p) + '</li>'; }).join('') + '</ol></div>' +
+        '<p class="fraca">' + (a.vezes ? 'Usado ' + plural(a.vezes, 'vez', 'vezes') + ', a última em ' + dm(a.ultimo_uso) + (a.postados ? ', ' + plural(a.postados, 'postado', 'postados') : '') + '.' : 'Ainda não foi usado.') + '</p></div>' +
+        rodape('<button class="btn btn-fantasma' + (a.ativo ? ' btn-perigo' : '') + '" type="button" data-act="arquivar-assunto" data-id="' + a.id + '" data-ativo="' + (a.ativo ? 0 : 1) + '">' + (a.ativo ? 'Arquivar' : 'Voltar a usar') + '</button>', 'salvar-assunto', a.id));
+      var f = document.getElementById('aAb'); if (f && !a.abertura) f.focus();
     }).catch(falha);
   }
-
-  // ---------- Receitas ----------
-  function telaReceitas(id) {
-    api('GET', '/api/receitas').then(function (r) { S.receitas = r; desenhaReceitas(id ? +id : (r[0] && r[0].id)); }).catch(falha);
+  function gavetaAba(id) {
+    var f = B.fr[id] || { nome: '', para: '', palavra: '' };
+    abrirGaveta(cabGaveta('Aba de produto', id ? 'Editar ' + h(f.nome) : 'Nova aba') + '<div class="corpo-gaveta">' +
+      '<div class="campo"><label for="frNome">Nome</label><input id="frNome" value="' + h(f.nome) + '" placeholder="Ex.: Mentoria"></div>' +
+      '<div class="campo"><label for="frPara">Para quem é</label><input id="frPara" value="' + h(f.para) + '" placeholder="Ex.: quem já é consultor e quer mais clientes"></div>' +
+      '<div class="campo"><label for="frPal">Palavra padrão para comentar</label><input id="frPal" value="' + h(f.palavra) + '"><span class="ajuda">Cada tópico novo desta aba começa com ela.</span></div></div>' +
+      rodape(id ? '<button class="btn btn-fantasma btn-perigo" type="button" data-act="apagar-aba" data-fr="' + id + '">Esconder a aba</button>' : '', 'salvar-aba', id, id ? 'Salvar' : 'Criar aba'));
+    document.getElementById('frNome').focus();
   }
-  function desenhaReceitas(id) {
-    var r = S.receitas.filter(function (x) { return x.id === id; })[0] || S.receitas[0];
-    var tot = { f: 0, c: 0, g: 0 }, n = 0;
-    if (r) r.dias.forEach(function (d) { d.forEach(function (fid) { tot[B.fmap[fid].frente]++; n++; }); });
-    var corpo = '<div class="cabecalho"><div><h1>Receitas</h1><p class="estado">A receita diz quantos vídeos tem cada dia e de que tipo. A semana é montada a partir dela.</p></div>' +
-      '<div class="acoes"><select class="sel" id="selRec" aria-label="Receita">' + S.receitas.map(function (x) { return '<option value="' + x.id + '"' + (r && x.id === r.id ? ' selected' : '') + '>' + h(x.nome) + '</option>'; }).join('') + '</select>' +
-      (r ? '<button class="btn" type="button" data-act="duplicar-receita" data-id="' + r.id + '">Duplicar</button>' : '') +
-      '<button class="btn" type="button" data-act="nova-receita">' + ic('mais') + 'Nova receita</button></div></div>';
-    if (r) {
-      corpo += '<div class="regua"><div><span class="r">Vídeos na semana</span><span class="v">' + n + '</span><span class="c">de segunda a sábado</span></div>' +
-        ['f', 'c', 'g'].map(function (k) { return '<div><span class="r">' + B.frentes[k].nome + '</span><span class="v">' + tot[k] + '</span><span class="c">' + (n ? Math.round(100 * tot[k] / n) : 0) + '% da semana</span></div>'; }).join('') + '</div>' +
-        '<div class="campo" style="max-width:360px"><label for="recNome">Nome da receita</label><input id="recNome" value="' + h(r.nome) + '" data-id="' + r.id + '"></div>' +
-        '<div class="quadro">' + r.dias.map(function (d, i) {
-          return '<section class="dia"><div class="dia-cab"><b>' + CURTO[i] + '</b><span class="conta">' + plural(d.length, 'vídeo', 'vídeos') + '</span></div>' +
-            d.map(function (fid, j) { var fm = B.fmap[fid]; return '<div class="receita-chip"><span class="frente ' + fm.frente + '">' + h(fm.nome) + '</span><button class="btn btn-fantasma btn-icone btn-mini" type="button" data-act="rec-tira" data-id="' + r.id + '" data-d="' + i + '" data-j="' + j + '" aria-label="Tirar ' + h(fm.nome) + '">' + ic('x') + '</button></div>'; }).join('') +
-            '<div class="mais"><select data-rec="' + r.id + '" data-d="' + i + '" aria-label="Pôr formato em ' + DIAS[i] + '">' + fmOptions('', '+ Formato') + '</select></div></section>';
-        }).join('') + '</div>' +
-        '<div><button class="btn btn-fantasma btn-perigo" type="button" data-act="apagar-receita" data-id="' + r.id + '">Apagar esta receita</button></div>';
-    }
-    moldura('receitas', corpo);
+  function gavetaTopico(fid, frId) {
+    var t = B.fmap[fid] || { nome: '', dica: '', passos: [], palavra: (B.fr[frId] || {}).palavra || '', frente: frId };
+    abrirGaveta(cabGaveta(frente(t.frente), fid ? 'Editar tópico' : 'Novo tópico') + '<div class="corpo-gaveta">' +
+      '<div class="campo"><label for="tNome">Nome do tópico</label><input id="tNome" value="' + h(t.nome) + '" placeholder="Ex.: Caixinha de perguntas"></div>' +
+      '<div class="campo"><label for="tDica">O que é</label><input id="tDica" value="' + h(t.dica) + '" placeholder="Ex.: pergunta de quem quer trabalhar com crédito"></div>' +
+      '<div class="campo"><label for="tPassos">Como gravar (um passo por linha)</label><textarea id="tPassos" style="min-height:110px">' + h(t.passos.join('\n')) + '</textarea><span class="ajuda">Aparece na folha do dia de todo vídeo deste tópico.</span></div>' +
+      '<div class="campo"><label for="tPal">Palavra para comentar</label><input id="tPal" value="' + h(t.palavra) + '"></div></div>' +
+      rodape(fid ? '<button class="btn btn-fantasma btn-perigo" type="button" data-act="apagar-topico" data-fm="' + fid + '">Esconder o tópico</button>' : '', 'salvar-topico', fid || '', fid ? 'Salvar' : 'Criar tópico', ' data-fr="' + h(t.frente) + '"'));
+    document.getElementById('tNome').focus();
   }
-  function salvaReceita(r) { return api('PUT', '/api/receitas/' + r.id, { dias: r.dias }).then(function () { desenhaReceitas(r.id); }).catch(falha); }
 
   // ---------- Andamento ----------
   function telaAndamento() { api('GET', '/api/andamento').then(desenhaAndamento).catch(falha); }
   function desenhaAndamento(j) {
+    guarda(j.atrasados); guarda(j.sem_post);
     var atual = j.semanas.filter(function (s) { return s.atual; })[0];
     var at = atual.total - atual.pulados, pct = function (a, b) { return b ? Math.round(100 * a / b) : 0; };
-    var ant = j.semanas[j.semanas.length - 3];
-    var antAt = ant ? ant.total - ant.pulados : 0;
-    var corpo = '<div class="cabecalho"><div><h1>Andamento</h1><p class="estado">' + (at ? pct(atual.gravados, at) + '% do planejado desta semana está gravado' + (j.atrasados.length ? ' e ' + plural(j.atrasados.length, 'vídeo está atrasado', 'vídeos estão atrasados') : '') + '.' : 'Esta semana ainda não tem plano.') + '</p></div>' +
+    var ant = j.semanas[j.semanas.length - 3], antAt = ant ? ant.total - ant.pulados : 0;
+    var df = j.dias_frente || {};
+    var usadas = B.frentes.filter(function (f) { return Object.keys(df).some(function (d) { return df[d][f.id]; }); });
+    var corpo = '<div class="cabecalho"><div><h1>Andamento</h1><p class="estado">' + (at ? '<b>' + pct(atual.gravados, at) + '%</b> do planejado desta semana está gravado' + (j.atrasados.length ? ' e ' + plural(j.atrasados.length, 'vídeo está atrasado', 'vídeos estão atrasados') : '') + '.' : 'Esta semana ainda não tem plano.') + '</p></div>' +
       '<div class="acoes"><a class="btn" href="#semana">Abrir a semana</a></div></div>' +
       '<div class="regua"><div><span class="r">Gravados esta semana</span><span class="v">' + atual.gravados + ' de ' + at + '</span><span class="c">' + (antAt ? 'semana passada: ' + ant.gravados + ' de ' + antAt : 'semana passada sem plano') + '</span></div>' +
       '<div><span class="r">Postados</span><span class="v">' + atual.postados + '</span><span class="c">' + pct(atual.postados, at) + '% do planejado</span></div>' +
-      '<div><span class="r">Atrasados</span><span class="v' + (j.atrasados.length ? ' erro' : '') + '">' + j.atrasados.length + '</span><span class="c">últimas 3 semanas</span></div>' +
-      '<div><span class="r">Gravados sem post</span><span class="v">' + j.sem_post.length + '</span><span class="c">esperando edição ou post</span></div>' +
-      '<div><span class="r">Assuntos a preencher</span><span class="v' + (j.assuntos_incompletos ? ' erro' : '') + '">' + j.assuntos_incompletos + '</span><span class="c">' + (j.assuntos_incompletos ? '<a href="#assuntos">Preencher</a>' : 'banco em dia') + '</span></div></div>';
-    corpo += '<div class="bloco"><h2>Dia a dia desta semana</h2><div class="tabela-caixa"><table class="tabela"><thead><tr><th>Dia</th>' +
-      ['f', 'c', 'g'].map(function (k) { return '<th>' + B.frentes[k].nome + '</th>'; }).join('') + '<th class="num">Gravados</th><th class="num">Postados</th><th>Situação</th></tr></thead><tbody>' +
-      [0, 1, 2, 3, 4, 5].map(function (i) {
-        var d = soma(atual.inicio, i), x = j.dias.filter(function (y) { return y.data === d; })[0] || { tot: 0, grav: 0, post: 0 };
-        var st = !x.tot ? '<span class="fraca">sem vídeo</span>' : x.grav >= x.tot ? '<span class="ponto ok">Completo</span>' : d < j.hoje ? '<span class="ponto erro">Faltou gravar</span>' : d === j.hoje ? '<span class="ponto atencao">Hoje</span>' : '<span class="ponto">Pela frente</span>';
-        var pf = (j.dias_frente || {})[d] || {};
-        return '<tr data-href="#hoje/' + d + '"><td class="curto">' + CURTO[i] + ' ' + dm(d) + '</td>' +
-          ['f', 'c', 'g'].map(function (k) { var p = pf[k]; return '<td class="fraca">' + (p ? p.grav + ' de ' + p.tot : 'sem vídeo') + '</td>'; }).join('') +
-          '<td class="num">' + (x.grav || 0) + ' de ' + x.tot + '</td><td class="num">' + (x.post || 0) + '</td><td>' + st + '</td></tr>';
+      '<div><span class="r">Atrasados</span><span class="v' + (j.atrasados.length ? ' erro' : ' ok') + '">' + j.atrasados.length + '</span><span class="c">últimas 3 semanas</span></div>' +
+      '<div><span class="r">Falta postar</span><span class="v">' + j.sem_post.length + '</span><span class="c">já gravados</span></div>' +
+      '<div><span class="r">Assuntos a preencher</span><span class="v' + (j.assuntos_incompletos ? ' erro' : ' ok') + '">' + j.assuntos_incompletos + '</span><span class="c">' + (j.assuntos_incompletos ? '<a href="#assuntos">Preencher</a>' : 'banco em dia') + '</span></div></div>';
+    corpo += '<div class="bloco"><h2>Dia a dia desta semana</h2><div class="tabela-caixa"><table class="tabela"><thead><tr><th>Dia</th>' + usadas.map(function (f) { return '<th>' + h(f.nome) + '</th>'; }).join('') +
+      '<th class="num">Gravados</th><th class="num">Postados</th><th>Situação</th></tr></thead><tbody>' + [0, 1, 2, 3, 4, 5].map(function (i) {
+        var d = soma(atual.inicio, i), x = j.dias.filter(function (y) { return y.data === d; })[0] || { tot: 0, grav: 0, post: 0 }, pf = df[d] || {};
+        var st = !x.tot ? '<span class="fraca">sem vídeo</span>' : x.grav >= x.tot ? '<span class="st postado">Completo</span>' : d < j.hoje ? '<span class="st atrasado">Faltou gravar</span>' : d === j.hoje ? '<span class="st a_gravar">Hoje</span>' : '<span class="fraca">pela frente</span>';
+        return '<tr data-href="#hoje/' + d + '"><td class="curto forte">' + DIAS[i] + ' ' + dm(d) + '</td>' + usadas.map(function (f) { var p = pf[f.id]; return '<td class="tinta-2">' + (p ? p.grav + ' de ' + p.tot : '') + '</td>'; }).join('') +
+          '<td class="num forte">' + (x.grav || 0) + ' de ' + x.tot + '</td><td class="num">' + (x.post || 0) + '</td><td>' + st + '</td></tr>';
       }).join('') + '</tbody></table></div></div>';
-    corpo += '<div class="duas"><div class="bloco"><h2>Atrasados</h2>' + (j.atrasados.length ? listaVideos(j.atrasados, true) : '<div class="vazio"><span>Nada atrasado.</span></div>') + '</div>' +
-      '<div class="bloco"><h2>Gravados, falta postar</h2>' + (j.sem_post.length ? listaVideos(j.sem_post) : '<div class="vazio"><span>Tudo que foi gravado já foi postado.</span></div>') + '</div></div>';
-    corpo += '<div class="bloco"><h2>Semana a semana</h2><div class="tabela-caixa"><table class="tabela"><thead><tr><th>Semana</th><th>Gravados e postados</th><th class="num">Planejados</th><th class="num">Gravados</th><th class="num">Postados</th></tr></thead><tbody>' +
+    corpo += '<div class="duas"><div class="bloco"><h2>Atrasados</h2>' + (j.atrasados.length ? '<div class="tarefas">' + j.atrasados.map(function (v) { return tarefa(v); }).join('') + '</div>' : '<div class="vazio"><span>Nada atrasado.</span></div>') + '</div>' +
+      '<div class="bloco"><h2>Gravados, falta postar</h2>' + (j.sem_post.length ? '<div class="tarefas">' + j.sem_post.map(function (v) { return tarefa(v); }).join('') + '</div>' : '<div class="vazio"><span>Tudo que foi gravado já foi postado.</span></div>') + '</div></div>';
+    corpo += '<div class="bloco"><h2>Semana a semana</h2><div class="tabela-caixa"><table class="tabela"><thead><tr><th>Semana</th><th>Gravados e postados</th><th class="num">No plano</th><th class="num">Gravados</th><th class="num">Postados</th></tr></thead><tbody>' +
       j.semanas.slice().reverse().map(function (s) {
         var a = s.total - s.pulados;
-        return '<tr data-href="#semana/' + s.inicio + '"><td class="curto">' + dm(s.inicio) + (s.atual ? ' <span class="selo selo-info">Esta</span>' : '') + '</td>' +
-          '<td><div class="trilho" aria-label="' + s.postados + ' postados e ' + (s.gravados - s.postados) + ' gravados sem post"><i class="p" style="width:' + pct(s.postados, a) + '%"></i><i class="g" style="width:' + pct(s.gravados - s.postados, a) + '%"></i></div></td>' +
+        return '<tr data-href="#semana/' + s.inicio + '"><td class="curto forte">' + dm(s.inicio) + (s.atual ? ' <span class="selo selo-escuro">Esta</span>' : '') + '</td>' +
+          '<td><div class="trilho"><i class="p" style="width:' + pct(s.postados, a) + '%"></i><i class="g" style="width:' + pct(s.gravados - s.postados, a) + '%"></i></div></td>' +
           '<td class="num">' + (a || 'sem plano') + '</td><td class="num">' + s.gravados + '</td><td class="num">' + s.postados + '</td></tr>';
       }).join('') + '</tbody></table></div><p class="fraca">Na barra: verde é postado, azul é gravado e ainda não postado.</p></div>';
     corpo += '<details class="recolhido"><summary>Últimas mudanças</summary>' + (j.historico.length ? '<div class="tabela-caixa"><table class="tabela"><tbody>' + j.historico.map(function (x) {
-      return '<tr data-href="#semana/' + semanaDe(x.data) + '"><td>' + h(x.quem) + ' marcou <b>' + ST_NOME[x.para] + '</b></td><td class="fraca">' + dm(x.data) + ' · ' + h(x.formato_nome) + '</td><td class="num fraca">' + h(x.quando.slice(8, 10) + '/' + x.quando.slice(5, 7) + ' ' + x.quando.slice(11)) + '</td></tr>';
+      return '<tr data-href="#semana/' + semanaDe(x.data) + '"><td>' + h(x.quem) + ' marcou <span class="st ' + x.para + '">' + ST_NOME[x.para] + '</span></td><td class="tinta-2">' + dm(x.data) + ' · ' + h(x.formato_nome) + '</td><td class="num fraca">' + hora(x.quando) + '</td></tr>';
     }).join('') + '</tbody></table></div>' : '<p class="fraca" style="padding:0 16px 12px">Ainda nada.</p>') + '</details>';
     moldura('andamento', corpo);
   }
-  function listaVideos(vs, comDia) {
-    return '<div class="tabela-caixa"><table class="tabela"><tbody>' + vs.map(function (v) {
-      return '<tr data-href="#semana/' + semanaDe(v.data) + '"><td class="curto">' + CURTO[diaSem(v.data)] + ' ' + dm(v.data) + '</td><td>' + frente(v.frente) + ' <span class="tinta-2">' + h(v.formato_nome) + '</span>' +
-        (v.abertura ? '<br><span class="fraca">' + h(v.abertura) + '</span>' : '') + '</td><td class="curto">' + situacao(v) + '</td></tr>';
-    }).join('') + '</tbody></table></div>';
+
+  // ---------- Configurações ----------
+  function telaConfig(aba, id) {
+    aba = aba === 'receitas' ? 'receitas' : 'pessoas';
+    if (aba === 'pessoas') return api('GET', '/api/usuarios').then(desenhaPessoas).catch(falha);
+    return api('GET', '/api/receitas').then(function (r) { S.receitas = r; desenhaReceitas(id ? +id : (r[0] && r[0].id)); }).catch(falha);
   }
+  function cabConfig(aba) {
+    return '<div class="cabecalho"><div><h1>Configurações</h1><p class="estado">Quem entra no sistema e as receitas que montam a semana. Abas e tópicos dos assuntos se criam na própria tela de <a href="#assuntos">Assuntos</a>.</p></div></div>' +
+      '<div class="abas"><a href="#config/pessoas" class="' + (aba === 'pessoas' ? 'ativo' : '') + '">Pessoas</a><a href="#config/receitas" class="' + (aba === 'receitas' ? 'ativo' : '') + '">Receitas</a></div>';
+  }
+  function desenhaPessoas(us) {
+    S.pessoas = us;
+    var corpo = cabConfig('pessoas') + '<div class="bloco-cab"><p class="tinta-2">' + plural(us.filter(function (u) { return u.ativo; }).length, 'pessoa com acesso', 'pessoas com acesso') + '.</p>' +
+      '<button class="btn btn-principal" type="button" data-act="nova-pessoa">' + ic('mais') + 'Nova pessoa</button></div>' +
+      '<div class="tabela-caixa"><table class="tabela"><thead><tr><th>Nome</th><th>E-mail ou usuário</th><th>Acesso</th><th>Situação</th></tr></thead><tbody>' +
+      us.map(function (u) {
+        return '<tr data-act="editar-pessoa" data-id="' + u.id + '" class="' + (u.ativo ? '' : 'apagado') + '"><td class="forte">' + h(u.nome) + (u.id === B.eu.id ? ' <span class="selo">você</span>' : '') + '</td><td>' + h(u.login) + '</td><td>' + h(PAPEL[u.papel]) + '</td>' +
+          '<td>' + (u.ativo ? '<span class="selo selo-ok">Com acesso</span>' : '<span class="selo">Sem acesso</span>') + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+    moldura('config', corpo);
+  }
+  function gavetaPessoa(id) {
+    var u = (S.pessoas || []).filter(function (x) { return x.id === id; })[0] || { nome: '', login: '', papel: 'gravador', ativo: 1 };
+    var papeis = B.eu.papel === 'super' ? ['super', 'equipe', 'gravador'] : ['equipe', 'gravador'];
+    var travado = u.papel === 'super' && B.eu.papel !== 'super';
+    abrirGaveta(cabGaveta('Pessoas', id ? h(u.nome) : 'Nova pessoa') + '<div class="corpo-gaveta">' +
+      '<div class="campo"><label for="pNome">Nome</label><input id="pNome" value="' + h(u.nome) + '"></div>' +
+      '<div class="campo"><label for="pLogin">E-mail ou usuário</label><input id="pLogin" value="' + h(u.login) + '"' + (id ? ' disabled' : '') + ' autocomplete="off"><span class="ajuda">' + (id ? 'Para trocar o e-mail, crie a pessoa de novo.' : 'É o que ela digita para entrar.') + '</span></div>' +
+      '<div class="campo"><label for="pPapel">Acesso</label><select id="pPapel"' + (travado ? ' disabled' : '') + '>' + (papeis.indexOf(u.papel) < 0 ? '<option value="' + u.papel + '" selected>' + PAPEL[u.papel] + '</option>' : '') +
+      papeis.map(function (p) { return '<option value="' + p + '"' + (p === u.papel ? ' selected' : '') + '>' + PAPEL[p] + '</option>'; }).join('') + '</select></div>' +
+      '<div class="campo"><label for="pSenha">' + (id ? 'Nova senha (em branco mantém a atual)' : 'Senha') + '</label><input id="pSenha" type="text" autocomplete="new-password" placeholder="6 letras ou mais"></div></div>' +
+      rodape(id && id !== B.eu.id && !travado ? '<button class="btn btn-fantasma' + (u.ativo ? ' btn-perigo' : '') + '" type="button" data-act="acesso-pessoa" data-id="' + id + '" data-ativo="' + (u.ativo ? 0 : 1) + '">' + (u.ativo ? 'Tirar o acesso' : 'Devolver o acesso') + '</button>' : '', 'salvar-pessoa', id || '', id ? 'Salvar' : 'Criar acesso'));
+    document.getElementById('pNome').focus();
+  }
+  function desenhaReceitas(id) {
+    var r = S.receitas.filter(function (x) { return x.id === id; })[0] || S.receitas[0], n = 0, tot = {};
+    if (r) r.dias.forEach(function (d) { d.forEach(function (fid) { var f = B.fmap[fid]; if (!f) return; tot[f.frente] = (tot[f.frente] || 0) + 1; n++; }); });
+    var corpo = cabConfig('receitas') + '<div class="bloco-cab"><div class="linha"><select class="sel" id="selRec" aria-label="Receita">' + S.receitas.map(function (x) { return '<option value="' + x.id + '"' + (r && x.id === r.id ? ' selected' : '') + '>' + h(x.nome) + '</option>'; }).join('') + '</select>' +
+      (r ? '<button class="btn" type="button" data-act="duplicar-receita" data-id="' + r.id + '">Duplicar</button>' : '') + '</div><button class="btn btn-principal" type="button" data-act="nova-receita">' + ic('mais') + 'Nova receita</button></div>';
+    if (r) {
+      corpo += '<div class="regua"><div><span class="r">Vídeos na semana</span><span class="v">' + n + '</span><span class="c">de segunda a sábado</span></div>' +
+        B.frentes.filter(function (f) { return tot[f.id]; }).map(function (f) { return '<div><span class="r">' + h(f.nome) + '</span><span class="v">' + tot[f.id] + '</span><span class="c">' + Math.round(100 * tot[f.id] / n) + '% da semana</span></div>'; }).join('') + '</div>' +
+        '<div class="campo" style="max-width:360px"><label for="recNome">Nome da receita</label><input id="recNome" value="' + h(r.nome) + '" data-id="' + r.id + '"></div>' +
+        '<div class="quadro">' + r.dias.map(function (d, i) {
+          return '<section class="dia"><div class="dia-cab"><div class="nome"><b>' + DIAS[i] + '</b></div><span class="conta">' + d.length + '</span></div>' +
+            d.map(function (fid, j) { var fm = B.fmap[fid]; if (!fm) return ''; return '<div class="receita-chip">' + frente(fm.frente, fm.nome) + '<button class="btn btn-fantasma btn-icone btn-mini" type="button" data-act="rec-tira" data-id="' + r.id + '" data-d="' + i + '" data-j="' + j + '" aria-label="Tirar ' + h(fm.nome) + '">' + ic('x') + '</button></div>'; }).join('') +
+            '<div class="mais"><select data-rec="' + r.id + '" data-d="' + i + '" aria-label="Pôr tópico em ' + DIAS[i] + '">' + fmOptions('', '+ Tópico') + '</select></div></section>';
+        }).join('') + '</div><div><button class="btn btn-fantasma btn-perigo" type="button" data-act="apagar-receita" data-id="' + r.id + '">Apagar esta receita</button></div>';
+    }
+    moldura('config', corpo);
+  }
+  function salvaReceita(r) { return api('PUT', '/api/receitas/' + r.id, { dias: r.dias }).then(function () { desenhaReceitas(r.id); }).catch(falha); }
 
   // ---------- ações ----------
+  function val(id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; }
+  function recarregaVideo(id) {
+    var v = S.vids[id];
+    return api('GET', '/api/semana?inicio=' + semanaDe(v.data)).then(function (j) { guarda(j.videos); if (S.semana && S.semana.inicio === j.inicio) S.semana = j; });
+  }
   function mudaStatus(id, novo, antes, depois) {
     return api('PATCH', '/api/videos/' + id, { status: novo }).then(function () {
       aviso('Marcado como ' + ST_NOME[novo].toLowerCase(), function () { api('PATCH', '/api/videos/' + id, { status: antes }).then(depois).catch(falha); });
@@ -406,27 +465,38 @@
     if (act === 'montar-nao') { S.confirmar = false; return desenhaSemana(); }
     if (act === 'video') return gavetaVideo(id);
     if (act === 'status') {
-      var v = S.semana.videos.filter(function (x) { return x.id === id; })[0];
-      if (!v || v.status === t.dataset.st) return;
-      return mudaStatus(id, t.dataset.st, v.status, function () { return recarregaSemana().then(function () { if (!document.getElementById('gaveta').hidden) gavetaVideo(id); }); });
+      var v = S.vids[id]; if (!v || v.status === t.dataset.st) return;
+      return mudaStatus(id, t.dataset.st, v.status, function () {
+        return recarregaVideo(id).then(function () { var aberta = !document.getElementById('gaveta').hidden; return redesenha().then(function () { if (aberta) gavetaVideo(id); }); });
+      });
     }
     if (act === 'salvar-video') {
-      var nova = document.getElementById('gData').value;
-      return api('PATCH', '/api/videos/' + id, { link: document.getElementById('gLink').value.trim(), palavra: document.getElementById('gPal').value.trim().toUpperCase(), nota: document.getElementById('gNota').value, data: nova })
-        .then(function () { aviso('Vídeo salvo'); fecharGaveta(); if (semanaDe(nova) !== S.semana.inicio) { location.hash = '#semana/' + semanaDe(nova); return; } return recarregaSemana(); }).catch(falha);
+      var v2 = S.vids[id], nova = val('gData'), passos = [];
+      if (v2.assunto_id && document.getElementById('aAb')) {
+        var ab = val('aAb'), po = val('aPo'), pr = val('aPr');
+        if (ab !== (v2.abertura || '') || po !== (v2.pontos || '') || pr !== (v2.prova || '')) passos.push(api('PATCH', '/api/assuntos/' + v2.assunto_id, { abertura: ab, pontos: po, prova: pr }));
+      }
+      passos.push(api('PATCH', '/api/videos/' + id, { link: val('gLink'), palavra: val('gPal').toUpperCase(), nota: document.getElementById('gNota').value, data: nova }));
+      return Promise.all(passos).then(function () {
+        aviso('Vídeo salvo'); fecharGaveta();
+        return carregaAssuntos(true).then(function () {
+          if (rotaAtual() === 'semana' && semanaDe(nova) !== S.semana.inicio) { location.hash = '#semana/' + semanaDe(nova); return; }
+          return redesenha();
+        });
+      }).catch(falha);
     }
     if (act === 'apagar-video') {
-      if (t.dataset.certo !== '1') { t.dataset.certo = '1'; t.textContent = 'Clique de novo: some da semana e do andamento'; return; }
-      return api('DELETE', '/api/videos/' + id).then(function () { aviso('Vídeo tirado da semana'); fecharGaveta(); return recarregaSemana(); }).catch(falha);
+      if (t.dataset.certo !== '1') { t.dataset.certo = '1'; t.textContent = 'Clique de novo: some da semana'; return; }
+      return api('DELETE', '/api/videos/' + id).then(function () { aviso('Vídeo tirado da semana'); fecharGaveta(); return redesenha(); }).catch(falha);
     }
     if (act === 'gravei') {
       var antes = t.dataset.st, novo = feito(antes) ? 'a_gravar' : 'gravado';
       return mudaStatus(id, novo, antes, function () { return telaHoje(S.dia.data); });
     }
     if (act === 'editar-assunto') return gavetaAssunto(id);
+    if (act === 'novo-assunto') return api('POST', '/api/assuntos', { formato: t.dataset.fm }).then(function (r) { return carregaAssuntos(true).then(function () { rota(); setTimeout(function () { gavetaAssunto(r.id); }, 120); }); }).catch(falha);
     if (act === 'salvar-assunto') {
-      return api('PATCH', '/api/assuntos/' + id, { abertura: document.getElementById('aAb').value.trim(), pontos: document.getElementById('aPo').value.trim(), prova: document.getElementById('aPr').value.trim(), palavra: document.getElementById('aPa').value.trim().toUpperCase() })
-        .then(function () { depoisAssunto('Assunto salvo'); }).catch(falha);
+      return api('PATCH', '/api/assuntos/' + id, { abertura: val('aAb'), pontos: val('aPo'), prova: val('aPr'), palavra: val('aPa').toUpperCase() }).then(function () { depoisAssunto('Assunto salvo'); }).catch(falha);
     }
     if (act === 'arquivar-assunto') {
       var ativo = +t.dataset.ativo;
@@ -434,26 +504,62 @@
         depoisAssunto(ativo ? 'Assunto de volta ao banco' : 'Assunto arquivado', ativo ? null : function () { api('PATCH', '/api/assuntos/' + id, { ativo: 1 }).then(function () { depoisAssunto('Assunto de volta ao banco'); }); });
       }).catch(falha);
     }
-    if (act === 'filtro') { S.filtro = t.dataset.v; return desenhaAssuntos(); }
-    if (act === 'nova-receita') return api('POST', '/api/receitas', { nome: 'Receita nova' }).then(function (r) { location.hash = '#receitas/' + r.id; }).catch(falha);
+    if (act === 'nova-aba') return gavetaAba(null);
+    if (act === 'editar-aba') return gavetaAba(t.dataset.fr);
+    if (act === 'salvar-aba') {
+      var dados = { nome: val('frNome'), para: val('frPara'), palavra: val('frPal').toUpperCase() };
+      if (!dados.nome) return aviso('Dê um nome para a aba.', null, true);
+      var fr = t.dataset.id;
+      var p = fr ? api('PATCH', '/api/frentes/' + fr, dados).then(function () { return { id: fr }; }) : api('POST', '/api/frentes', dados);
+      return p.then(function (r) { return recarregaBase().then(function () { aviso(fr ? 'Aba salva' : 'Aba criada. Agora crie os tópicos dela.'); fecharGaveta(); location.hash = '#assuntos/' + r.id; rota(); }); }).catch(falha);
+    }
+    if (act === 'apagar-aba') {
+      if (t.dataset.certo !== '1') { t.dataset.certo = '1'; t.textContent = 'Clique de novo: a aba some'; return; }
+      return api('PATCH', '/api/frentes/' + t.dataset.fr, { ativo: 0 }).then(recarregaBase).then(function () { aviso('Aba escondida'); fecharGaveta(); location.hash = '#assuntos'; rota(); }).catch(falha);
+    }
+    if (act === 'novo-topico') return gavetaTopico(null, t.dataset.fr);
+    if (act === 'editar-topico') return gavetaTopico(t.dataset.fm);
+    if (act === 'salvar-topico') {
+      var fid = t.dataset.id, frId = t.dataset.fr;
+      var corpo = { nome: val('tNome'), dica: val('tDica'), passos: document.getElementById('tPassos').value.split('\n'), palavra: val('tPal').toUpperCase() };
+      if (!corpo.nome) return aviso('Dê um nome para o tópico.', null, true);
+      var pr2 = fid ? api('PATCH', '/api/formatos/' + fid, corpo).then(function () { return { id: fid }; })
+        : api('POST', '/api/formatos', { frente: frId, nome: corpo.nome, dica: corpo.dica }).then(function (r) { return api('PATCH', '/api/formatos/' + r.id, corpo).then(function () { return r; }); });
+      return pr2.then(function (r) { return recarregaBase().then(function () { aviso(fid ? 'Tópico salvo' : 'Tópico criado. Agora cadastre os assuntos.'); fecharGaveta(); location.hash = '#assuntos/' + frId + '/' + r.id; rota(); }); }).catch(falha);
+    }
+    if (act === 'apagar-topico') {
+      if (t.dataset.certo !== '1') { t.dataset.certo = '1'; t.textContent = 'Clique de novo: o tópico some'; return; }
+      var ff = B.fmap[t.dataset.fm];
+      return api('PATCH', '/api/formatos/' + t.dataset.fm, { ativo: 0 }).then(recarregaBase).then(function () { aviso('Tópico escondido'); fecharGaveta(); location.hash = '#assuntos/' + ff.frente; rota(); }).catch(falha);
+    }
+    if (act === 'nova-pessoa') return gavetaPessoa(null);
+    if (act === 'editar-pessoa') return gavetaPessoa(id);
+    if (act === 'salvar-pessoa') {
+      var dp = { nome: val('pNome') }, papel = document.getElementById('pPapel');
+      if (!papel.disabled) dp.papel = papel.value;
+      if (val('pSenha')) dp.senha = val('pSenha');
+      var pp = t.dataset.id ? api('PATCH', '/api/usuarios/' + t.dataset.id, dp) : api('POST', '/api/usuarios', Object.assign(dp, { login: val('pLogin') }));
+      return pp.then(function () { aviso(t.dataset.id ? 'Pessoa salva' : 'Acesso criado. Passe o e-mail e a senha para a pessoa.'); fecharGaveta(); telaConfig('pessoas'); }).catch(falha);
+    }
+    if (act === 'acesso-pessoa') {
+      var at2 = +t.dataset.ativo;
+      if (!at2 && t.dataset.certo !== '1') { t.dataset.certo = '1'; t.textContent = 'Clique de novo: ela não entra mais'; return; }
+      return api('PATCH', '/api/usuarios/' + id, { ativo: at2 }).then(function () { aviso(at2 ? 'Acesso devolvido' : 'Acesso tirado'); fecharGaveta(); telaConfig('pessoas'); }).catch(falha);
+    }
+    if (act === 'nova-receita') return api('POST', '/api/receitas', { nome: 'Receita nova' }).then(function (r) { location.hash = '#config/receitas/' + r.id; }).catch(falha);
     if (act === 'duplicar-receita') {
       var base = S.receitas.filter(function (x) { return x.id === id; })[0];
-      return api('POST', '/api/receitas', { nome: base.nome + ' (cópia)', dias: base.dias }).then(function (r) { location.hash = '#receitas/' + r.id; aviso('Receita duplicada'); }).catch(falha);
+      return api('POST', '/api/receitas', { nome: base.nome + ' (cópia)', dias: base.dias }).then(function (r) { location.hash = '#config/receitas/' + r.id; aviso('Receita duplicada'); }).catch(falha);
     }
     if (act === 'apagar-receita') {
-      if (t.dataset.certo !== '1') { t.dataset.certo = '1'; t.textContent = 'Clique de novo: a receita some da lista (as semanas já montadas ficam)'; return; }
-      return api('PUT', '/api/receitas/' + id, { apagar: true }).then(function () { aviso('Receita apagada'); location.hash = '#receitas'; telaReceitas(); }).catch(falha);
+      if (t.dataset.certo !== '1') { t.dataset.certo = '1'; t.textContent = 'Clique de novo: a receita some (as semanas montadas ficam)'; return; }
+      return api('PUT', '/api/receitas/' + id, { apagar: true }).then(function () { aviso('Receita apagada'); location.hash = '#config/receitas'; }).catch(falha);
     }
-    if (act === 'rec-tira') {
-      var r = S.receitas.filter(function (x) { return x.id === id; })[0];
-      r.dias[+t.dataset.d].splice(+t.dataset.j, 1); return salvaReceita(r);
-    }
+    if (act === 'rec-tira') { var r = S.receitas.filter(function (x) { return x.id === id; })[0]; r.dias[+t.dataset.d].splice(+t.dataset.j, 1); return salvaReceita(r); }
   });
   function depoisAssunto(msg, desfazer) {
     aviso(msg, desfazer); fecharGaveta();
-    return carregaAssuntos(true).then(function () {
-      if (rotaAtual() === 'assuntos') desenhaAssuntos(); else if (rotaAtual() === 'semana' && S.semana) recarregaSemana();
-    });
+    return carregaAssuntos(true).then(function () { redesenha(); });
   }
   function montar(substituir) {
     return api('POST', '/api/semana/montar', { inicio: S.semana.inicio, receita: +document.getElementById('selReceita').value, substituir: substituir })
@@ -462,19 +568,13 @@
   document.addEventListener('change', function (e) {
     var t = e.target;
     if (t.dataset.add) { if (!t.value) return; return api('POST', '/api/videos', { data: t.dataset.add, formato: t.value }).then(function () { aviso('Vídeo posto no dia'); return recarregaSemana(); }).catch(falha); }
-    if (t.id === 'gFm') return api('PATCH', '/api/videos/' + t.dataset.vid, { formato: t.value }).then(recarregaSemana).then(function () { gavetaVideo(+t.dataset.vid); }).catch(falha);
-    if (t.id === 'gAs') return api('PATCH', '/api/videos/' + t.dataset.vid, { assunto_id: t.value ? +t.value : null, palavra: null }).then(recarregaSemana).then(function () { gavetaVideo(+t.dataset.vid); }).catch(falha);
-    if (t.id === 'selFiltro') { S.filtro = t.value; return desenhaAssuntos(); }
-    if (t.id === 'selNovo') {
-      if (!t.value) return;
-      return api('POST', '/api/assuntos', { formato: t.value }).then(function (r) { return carregaAssuntos(true).then(function () { desenhaAssuntos(); gavetaAssunto(r.id); }); }).catch(falha);
+    if (t.id === 'gFm' || t.id === 'gAs') {
+      var vid = +t.dataset.vid, corpo = t.id === 'gFm' ? { formato: t.value } : { assunto_id: t.value ? +t.value : null, palavra: null };
+      return api('PATCH', '/api/videos/' + vid, corpo).then(function () { return recarregaVideo(vid); }).then(function () { gavetaVideo(vid); if (rotaAtual() === 'semana') desenhaSemana(); }).catch(falha);
     }
-    if (t.id === 'selRec') { location.hash = '#receitas/' + t.value; return; }
-    if (t.id === 'recNome') return api('PUT', '/api/receitas/' + t.dataset.id, { nome: t.value.trim() }).then(function () { aviso('Nome salvo'); telaReceitas(+t.dataset.id); }).catch(falha);
-    if (t.dataset.rec) {
-      var r = S.receitas.filter(function (x) { return x.id === +t.dataset.rec; })[0];
-      if (!t.value) return; r.dias[+t.dataset.d].push(t.value); return salvaReceita(r);
-    }
+    if (t.id === 'selRec') { location.hash = '#config/receitas/' + t.value; return; }
+    if (t.id === 'recNome') return api('PUT', '/api/receitas/' + t.dataset.id, { nome: t.value.trim() }).then(function () { aviso('Nome salvo'); telaConfig('receitas', t.dataset.id); }).catch(falha);
+    if (t.dataset.rec) { var r = S.receitas.filter(function (x) { return x.id === +t.dataset.rec; })[0]; if (!t.value) return; r.dias[+t.dataset.d].push(t.value); return salvaReceita(r); }
   });
 
   iniciar();

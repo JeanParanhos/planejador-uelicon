@@ -1,13 +1,19 @@
 # Linguagem visual do Planejador do Uélicon
 
-Base: Design da Central (`design-prompt/base/README.md`). A base manda em escala, espaço, forma e organização.
-Pele: **Roxo** (a dos sistemas do Uélicon): marca `#7c3aed`, Inter, neutros da pele em `web/estilo.css`.
+Estrutura da base do Design da Central (`design-prompt/base/README.md`): cabeçalho de tela (o que é, como está, o que fazer),
+régua de números, gaveta à direita, tabela para lista com atributos, aviso com Desfazer, destrutiva em dois passos.
+**Cor por ordem do Jean (19/10):** fundo branco puro, bordas e texto pretos, cabeçalho preto. Botão principal preto.
+Roxo `#7c3aed` só na marca do topo e no anel de foco. Fonte Inter, texto 14 px, título 22 px.
 
 ## Peças próprias
-- **Ponto da frente**: bolinha de 8 px com o nome ao lado. Formação `#db2777`, Consulta `#058b61`, Geral `#b45309`. Nunca fundo de cartão.
-- **Quadro da semana**: 6 colunas (3 até 1240 px, 1 no celular), cartão branco com borda; feito fica em `superficie-2`.
-- **Folha do dia**: um cartão por vídeo, frase de abertura em 18 px (o único tamanho grande da tela), botão principal "Marcar como gravado". Imprime sem menu.
-- **Situação**: ponto + palavra. A gravar cinza, gravado e editado azul (`info`), postado verde (`ok`), atrasado vermelho.
+- **Aba de produto** (Formação, Consulta, Imersão, Vivendo de Rating, Geral, e as que o Arlindo criar): etiqueta com a cor da aba (`frentes.cor` no banco).
+- **Situação**: selo cheio, lido de longe. A gravar branco com borda preta, Gravado azul, Editado cinza escuro, Postado verde, Atrasado vermelho.
+- **Falta preencher**: "!" na cor de atenção com o que falta ("Falta a frase", "Falta o que falar").
+- **Cartão do vídeo**: a frase de abertura é o texto mais forte; o tópico vem pequeno embaixo.
+- **Dia de hoje**: cabeçalho do dia em preto.
+- **Folha do dia**: um cartão por vídeo com "Comece com", "Depois fale", "Mostre a prova", "Como gravar" e o botão "Marcar como gravado".
 
 ## Regras vindas do Jean
-- 19/10: a primeira versão (cartões coloridos, títulos grandes, fonte de display) ficou "ruim". Vale a base da central.
+- 19/10: a primeira versão (cartões coloridos, fonte de display) ficou ruim; a segunda (cinza, tudo no mesmo texto) também.
+  Vale: branco, preto, borda preta e peso diferente para cada coisa.
+- 19/10: assuntos em abas de produto (as do Everpages) com subabas de tópico, e o Arlindo cria abas e tópicos novos.

@@ -14,6 +14,7 @@ Python 3.12 + FastAPI + SQLite (`dados/planejador.db`, só na VPS). Front sem bu
 | `app.py` | API, login (scrypt + cookie assinado), regras de quem pode o quê, escolha automática de assunto |
 | `base.py` | Esquema, formatos, assuntos de partida, receitas; `python base.py usuario <login> "<Nome>" <papel> <senha>` |
 | `deploy/` | systemd, bloco do Caddy, `subir.sh` |
+| `docs/design/LINGUAGEM.md` | Visual: base do Design da Central + pele Roxo; ler antes de mexer em tela |
 
 ## Regras do produto
 - Frente (f, c, g) → formato (`F-CX`, `C-RT`...) → assunto numerado. Assunto "pronto" = frase de abertura + o que falar.

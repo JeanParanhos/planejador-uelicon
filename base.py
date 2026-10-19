@@ -14,6 +14,10 @@ CREATE TABLE IF NOT EXISTS usuarios (
   id INTEGER PRIMARY KEY, login TEXT UNIQUE NOT NULL, nome TEXT NOT NULL,
   papel TEXT NOT NULL CHECK (papel IN ('super','equipe','gravador')), senha TEXT NOT NULL, ativo INTEGER NOT NULL DEFAULT 1
 );
+CREATE TABLE IF NOT EXISTS frentes (
+  id TEXT PRIMARY KEY, nome TEXT NOT NULL, para TEXT NOT NULL DEFAULT '', palavra TEXT NOT NULL DEFAULT '',
+  cor TEXT NOT NULL DEFAULT '#3f3f46', ordem INTEGER NOT NULL DEFAULT 0, ativo INTEGER NOT NULL DEFAULT 1
+);
 CREATE TABLE IF NOT EXISTS formatos (
   id TEXT PRIMARY KEY, frente TEXT NOT NULL, nome TEXT NOT NULL, dica TEXT NOT NULL DEFAULT '',
   passos TEXT NOT NULL, palavra TEXT NOT NULL, ordem INTEGER NOT NULL
@@ -123,13 +127,47 @@ RECEITAS = [
 ]
 
 
+# Abas de produto (19/10, pedido do Jean: as mesmas do Everpages, mais Geral).
+FRENTES = [
+    ("f", "Formação", "quem quer trabalhar com crédito", "FORMAÇÃO", "#be185d", 1),
+    ("c", "Consulta", "quem tem nome limpo, quer crédito e ouve não do banco", "CONSULTA", "#047857", 2),
+    ("i", "Imersão", "quem quer o evento presencial ou online", "IMERSÃO", "#0e7490", 3),
+    ("v", "Vivendo de Rating", "quem quer a mentoria de rating", "RATING", "#6d28d9", 4),
+    ("g", "Geral", "notícia do dia e posicionamento", "CONSULTA", "#b45309", 5),
+]
+FORMATOS_NOVOS = [
+    ("I-CH", "i", "Chamada para a imersão", "Convite direto para a próxima imersão, com data e lugar.",
+     ["Diz a data e o lugar", "Conta o que a pessoa sai sabendo", "Chama para garantir a vaga"], "IMERSÃO"),
+    ("I-DP", "i", "Depoimento de quem foi", "Aluno da imersão contando o que mudou.",
+     ["Mostra quem foi", "Conta o antes e o depois", "Chama para a próxima turma"], "IMERSÃO"),
+    ("V-AU", "v", "Trecho da mentoria", "Um minuto de um encontro do Vivendo de Rating.",
+     ["Escolhe um trecho forte", "Põe a frase na tela no começo", "Chama para a mentoria"], "RATING"),
+    ("V-RS", "v", "Resultado de mentorado", "Mentorado contando o resultado com número.",
+     ["Começa pelo número", "Conta o que mudou no rating", "Chama para a mentoria"], "RATING"),
+]
+
+
+def migrar(c):
+    """Idempotente: roda em banco novo e no que já está no ar."""
+    c.executescript(ESQUEMA)
+    if "ativo" not in [r[1] for r in c.execute("PRAGMA table_info(formatos)")]:
+        c.execute("ALTER TABLE formatos ADD COLUMN ativo INTEGER NOT NULL DEFAULT 1")
+    if not c.execute("SELECT 1 FROM frentes").fetchone():
+        c.executemany("INSERT INTO frentes (id, nome, para, palavra, cor, ordem) VALUES (?,?,?,?,?,?)", FRENTES)
+        c.execute("UPDATE formatos SET frente='i' WHERE id='G-PL'")  # corte de palestra vende a imersão
+        base = c.execute("SELECT coalesce(max(ordem),0) FROM formatos").fetchone()[0]
+        for i, (fid, fr, nome, dica, passos, palavra) in enumerate(FORMATOS_NOVOS, 1):
+            c.execute("INSERT OR IGNORE INTO formatos (id, frente, nome, dica, passos, palavra, ordem) VALUES (?,?,?,?,?,?,?)", (fid, fr, nome, dica, json.dumps(passos, ensure_ascii=False), palavra, base + i))
+    c.execute("INSERT OR IGNORE INTO frentes (id, nome) SELECT DISTINCT frente, frente FROM formatos")
+
+
 def criar():
     DB.parent.mkdir(parents=True, exist_ok=True)
     c = sqlite3.connect(DB)
     c.executescript(ESQUEMA)
     if not c.execute("SELECT 1 FROM formatos").fetchone():
         for i, (fid, fr, nome, dica, passos, palavra) in enumerate(FORMATOS):
-            c.execute("INSERT INTO formatos VALUES (?,?,?,?,?,?,?)", (fid, fr, nome, dica, json.dumps(passos, ensure_ascii=False), palavra, i))
+            c.execute("INSERT INTO formatos (id, frente, nome, dica, passos, palavra, ordem) VALUES (?,?,?,?,?,?,?)", (fid, fr, nome, dica, json.dumps(passos, ensure_ascii=False), palavra, i))
         for fid, itens in ASSUNTOS.items():
             palavra = next(f[5] for f in FORMATOS if f[0] == fid)
             for n, (ab, po, pr) in enumerate(itens, 1):
@@ -137,6 +175,7 @@ def criar():
                           (fid, n, ab, po, pr, palavra, "Claude", agora()))
         for nome, dias in RECEITAS:
             c.execute("INSERT INTO receitas (nome, dias) VALUES (?,?)", (nome, json.dumps(dias)))
+    migrar(c)
     c.commit()
     print("banco pronto em", DB)
 
