@@ -131,9 +131,9 @@ RECEITAS = [
 FRENTES = [
     ("f", "Formação", "quem quer trabalhar com crédito", "FORMAÇÃO", "#be185d", 1),
     ("c", "Consulta", "quem tem nome limpo, quer crédito e ouve não do banco", "CONSULTA", "#047857", 2),
-    ("i", "Imersão", "quem quer o evento presencial ou online", "IMERSÃO", "#0e7490", 3),
-    ("v", "Vivendo de Rating", "quem quer a mentoria de rating", "RATING", "#6d28d9", 4),
-    ("g", "Geral", "notícia do dia e posicionamento", "CONSULTA", "#b45309", 5),
+    ("i", "Imersão", "quem quer o evento presencial ou online", "IMERSÃO", "#c2410c", 3),
+    ("v", "Vivendo de Rating", "quem quer a mentoria de rating", "RATING", "#a16207", 4),
+    ("g", "Geral", "notícia do dia e posicionamento", "CONSULTA", "#475569", 5),
 ]
 FORMATOS_NOVOS = [
     ("I-CH", "i", "Chamada para a imersão", "Convite direto para a próxima imersão, com data e lugar.",
@@ -159,6 +159,12 @@ def migrar(c):
         for i, (fid, fr, nome, dica, passos, palavra) in enumerate(FORMATOS_NOVOS, 1):
             c.execute("INSERT OR IGNORE INTO formatos (id, frente, nome, dica, passos, palavra, ordem) VALUES (?,?,?,?,?,?,?)", (fid, fr, nome, dica, json.dumps(passos, ensure_ascii=False), palavra, base + i))
     c.execute("INSERT OR IGNORE INTO frentes (id, nome) SELECT DISTINCT frente, frente FROM formatos")
+    # 19/10: acento virou azul; Vivendo de Rating sai do roxo. Exemplos com colchete saem da frase e viram dica na prova.
+    # Cores das abas sem roxo, sem azul (acento) e sem ciano (situação "gravado").
+    for fid, antiga, nova in (("v", "#6d28d9", "#a16207"), ("i", "#0e7490", "#c2410c"), ("g", "#b45309", "#475569")):
+        c.execute("UPDATE frentes SET cor=? WHERE id=? AND cor=?", (nova, fid, antiga))
+    c.execute("""UPDATE assuntos SET prova=CASE WHEN trim(prova)='' THEN abertura ELSE prova END, abertura=''
+                 WHERE criado_por='Claude' AND abertura LIKE '[%'""")
 
 
 def criar():

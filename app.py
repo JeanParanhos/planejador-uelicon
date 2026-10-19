@@ -483,19 +483,18 @@ def inicio(req: Request):
     with con() as c:
         def vids(onde, *args):
             return [video_saida(v) for v in linhas(c.execute(SQL_VIDEO + " WHERE " + onde + " ORDER BY v.data, v.ordem, v.id", args))]
-        hoje_v = vids("v.data=? AND v.status<>'pulado'", h.isoformat())
-        # Próximos 3 dias com assunto faltando: é o que o Arlindo precisa preencher primeiro.
-        preencher = [v for v in vids("v.data BETWEEN ? AND ? AND v.status='a_gravar'", h.isoformat(), (h + timedelta(days=3)).isoformat())
-                     if not v["completo"]]
+        semana_v = vids("v.data BETWEEN ? AND ?", seg.isoformat(), (seg + timedelta(days=5)).isoformat())
+        # Cada vídeo entra num grupo só, no primeiro que vale: atrasado > preencher > gravar hoje > postar.
         atrasados = vids("v.status='a_gravar' AND v.data<? AND v.data>=?", h.isoformat(), (h - timedelta(days=21)).isoformat())
-        sem_post = vids("v.status IN ('gravado','editado')")
-        r = c.execute("""SELECT count(*) tot, sum(status IN ('gravado','editado','postado')) grav, sum(status='postado') post
-             FROM videos WHERE data BETWEEN ? AND ? AND status<>'pulado'""", (seg.isoformat(), (seg + timedelta(days=5)).isoformat())).fetchone()
+        proximos = vids("v.status='a_gravar' AND v.data BETWEEN ? AND ?", h.isoformat(), (h + timedelta(days=3)).isoformat())
+        preencher = [v for v in proximos if not v["completo"]]
+        gravar = [v for v in proximos if v["completo"] and v["data"] == h.isoformat()]
+        postar = vids("v.status IN ('gravado','editado') AND trim(v.link)=''")
         prox = c.execute("SELECT count(*) FROM videos WHERE data BETWEEN ? AND ?",
                          ((seg + timedelta(days=7)).isoformat(), (seg + timedelta(days=12)).isoformat())).fetchone()[0]
-    return {"hoje": h.isoformat(), "videos_hoje": hoje_v, "preencher": preencher, "atrasados": atrasados, "sem_post": sem_post,
-            "semana": {"inicio": seg.isoformat(), "total": r["tot"] or 0, "gravados": r["grav"] or 0, "postados": r["post"] or 0},
-            "proxima_semana_montada": prox > 0, "proxima_inicio": (seg + timedelta(days=7)).isoformat()}
+    return {"hoje": h.isoformat(), "inicio": seg.isoformat(), "semana_videos": semana_v,
+            "atrasados": atrasados, "preencher": preencher, "gravar": gravar, "postar": postar,
+            "planejar_proxima": h.weekday() >= 3 and prox == 0, "proxima_inicio": (seg + timedelta(days=7)).isoformat()}
 
 
 # ---------- configurações: pessoas e formatos ----------
@@ -588,7 +587,7 @@ async def novo_formato(req: Request):
     return {"id": fid}
 
 
-CORES = ["#be185d", "#047857", "#0e7490", "#6d28d9", "#b45309", "#4d7c0f", "#9f1239", "#1e3a8a"]
+CORES = ["#be185d", "#047857", "#c2410c", "#a16207", "#475569", "#4d7c0f", "#9f1239", "#7c2d12"]
 
 
 @app.post("/api/frentes")
