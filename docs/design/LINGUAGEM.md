@@ -14,6 +14,7 @@ Inter, texto 13.
 - **Faixa da semana** (`faixaSemana`): 6 dias com bolinhas, barrinha e "x de y gravados"; clicar abre a folha do dia.
 - **O que fazer agora** (Início): uma lista só, em passos numerados com dono; cada vídeo num grupo só (atrasado, preencher, gravar hoje, postar); grupo vazio vira "✓" numa linha.
 - **Quadro da semana**: coluna cinza-clara por dia, cartões brancos; hoje em roxo claro. A frase é o texto mais forte do cartão.
+- **Menu de pôr vídeo** (`abreEscolha`): no lugar do seletor do sistema (no Mac abre escuro). Título "Pôr vídeo na Terça 27/10", grupos por produto com bolinha da cor, cada tipo com "2 roteiros prontos" em verde ou "sem roteiro" em cinza. Usado na Semana e nas Receitas.
 - **Folha do dia**: um cartão por vídeo com "Comece com", "Depois fale", "Mostre a prova", "Como gravar" e "Marcar como gravado".
 
 ## Regras vindas do Jean
@@ -22,3 +23,4 @@ Inter, texto 13.
 - 19/10: assuntos em abas de produto (as do Everpages) com subabas de tópico; o Arlindo cria abas e tópicos novos.
 - 19/10: Início confuso (o mesmo vídeo em duas listas, quatro blocos iguais). Agora: faixa da semana + uma lista em passos.
 - 19/10: nomes de tela iguais em tudo: **Produto** (aba), **Tipo de vídeo** (subaba), **Roteiro** (o que ele fala).
+- 19/10: seletor nativo escuro reprovado ("melhora essa tela"). Escolha de tipo de vídeo é sempre o menu claro.
