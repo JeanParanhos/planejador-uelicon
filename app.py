@@ -460,12 +460,17 @@ def andamento(req: Request):
                                      (h.isoformat(), (h - timedelta(days=21)).isoformat())))
         sem_post = linhas(c.execute(SQL_VIDEO + " WHERE v.status IN ('gravado','editado') ORDER BY v.data, v.ordem"))
         dias = linhas(c.execute("""SELECT data, count(*) tot, sum(status IN ('gravado','editado','postado')) grav, sum(status='postado') post
-             FROM videos WHERE data BETWEEN ? AND ? GROUP BY data""", (seg.isoformat(), (seg + timedelta(days=5)).isoformat())))
+             FROM videos WHERE data BETWEEN ? AND ? AND status<>'pulado' GROUP BY data""", (seg.isoformat(), (seg + timedelta(days=5)).isoformat())))
+        df = {}
+        for r in c.execute("""SELECT v.data, fm.frente, count(*) tot, sum(v.status IN ('gravado','editado','postado')) grav
+             FROM videos v JOIN formatos fm ON fm.id=v.formato WHERE v.data BETWEEN ? AND ? AND v.status<>'pulado'
+             GROUP BY v.data, fm.frente""", (seg.isoformat(), (seg + timedelta(days=5)).isoformat())):
+            df.setdefault(r["data"], {})[r["frente"]] = {"tot": r["tot"], "grav": r["grav"] or 0}
         falta = c.execute("SELECT count(*) FROM assuntos WHERE ativo=1 AND (trim(abertura)='' OR trim(pontos)='')").fetchone()[0]
         hist = linhas(c.execute("""SELECT h.*, f.nome formato_nome, v.data FROM historico h JOIN videos v ON v.id=h.video_id
              JOIN formatos f ON f.id=v.formato ORDER BY h.id DESC LIMIT 15"""))
     return {"hoje": h.isoformat(), "semanas": semanas, "atrasados": [video_saida(v) for v in atrasados],
-            "sem_post": [video_saida(v) for v in sem_post], "dias": dias, "assuntos_incompletos": falta, "historico": hist}
+            "sem_post": [video_saida(v) for v in sem_post], "dias": dias, "dias_frente": df, "assuntos_incompletos": falta, "historico": hist}
 
 
 # ---------- tela ----------
