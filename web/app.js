@@ -70,11 +70,29 @@
   }
   function equipe() { return B.eu && B.eu.papel !== 'gravador'; }
   function guarda(lista) { lista.forEach(function (v) { S.vids[v.id] = v; }); return lista; }
+  // Apontador do O Que Eu Fiz: a pessoa aponta na tela o que quer melhorar; cai nas Melhorias do Jean.
+  function ligaApontador(cfg) {
+    if (!cfg || window.__apontadorCarregado || document.getElementById('tagApontador')) return;
+    window.Apontador = window.Apontador || { q: [] };
+    window.Apontador.q.push(['tela', function () {
+      var r = rotaAtual(), nomes = { inicio: 'Início', semana: 'Semana', hoje: 'Folha do dia', assuntos: 'Roteiros', andamento: 'Andamento', config: 'Configuração' };
+      return { nome: nomes[r] || r, rota: location.hash || '#inicio', arquivo: 'web/app.js' };
+    }]);
+    var sc = document.createElement('script');
+    sc.id = 'tagApontador'; sc.async = true; sc.src = cfg.script;
+    sc.dataset.sistema = cfg.sistema; sc.dataset.chave = cfg.chave; sc.dataset.pessoa = B.eu.login; sc.dataset.nome = B.eu.nome;
+    document.body.appendChild(sc);
+  }
+  function desligaApontador() {
+    if (window.Apontador && window.Apontador.desligar) window.Apontador.desligar();
+    var sc = document.getElementById('tagApontador'); if (sc) sc.remove();
+  }
   function recarregaBase() {
     return api('GET', '/api/eu').then(function (j) {
       B.eu = j.usuario; B.hoje = j.hoje; B.frentes = j.frentes; B.formatos = j.formatos.filter(function (f) { return f.ativo !== 0; });
       B.fr = {}; j.frentes.forEach(function (f) { B.fr[f.id] = f; });
       B.fmap = {}; j.formatos.forEach(function (f) { B.fmap[f.id] = f; });
+      try { ligaApontador(j.apontador); } catch (e) { /* o apontador nunca trava o sistema */ }
     });
   }
   function carregaAssuntos(forcar) {
@@ -143,6 +161,7 @@
   function rota() {
     fecharGaveta();
     var r = (location.hash || '#inicio').slice(1).split('/');
+    if (r[0].indexOf('apontar=') === 0) r = ['inicio'];
     if (!equipe() && r[0] !== 'hoje') { location.hash = '#hoje'; return; }
     if (r[0] === 'hoje') return telaHoje(r[1]);
     if (r[0] === 'semana') return telaSemana(r[1]);
@@ -518,7 +537,7 @@
     if (act === 'abrir-menu') return document.body.classList.add('menu-aberto');
     if (act === 'fechar-menu') return document.body.classList.remove('menu-aberto');
     if (act === 'cfg') { var sc = document.getElementById('subCfg'); sc.hidden = !sc.hidden; t.setAttribute('aria-expanded', !sc.hidden); return; }
-    if (act === 'sair') return api('POST', '/api/sair').then(function () { location.hash = ''; telaEntrar(); });
+    if (act === 'sair') return api('POST', '/api/sair').then(function () { desligaApontador(); location.hash = ''; telaEntrar(); });
     if (act === 'imprimir') return window.print();
     if (act === 'montar') { if (S.semana.videos.length) { S.confirmar = true; return desenhaSemana(); } return montar(false); }
     if (act === 'montar-sim') { S.confirmar = false; return montar(true); }

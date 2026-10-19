@@ -23,6 +23,9 @@ SEGREDO = os.environ.get("PLANEJADOR_SEGREDO", "troque-isto-no-env")
 COOKIE_SEGURO = os.environ.get("COOKIE_SEGURO", "1") == "1"
 FUSO = ZoneInfo("America/Sao_Paulo")
 SESSAO_DIAS = 30
+# Apontador do O Que Eu Fiz (melhorias apontadas na tela). A chave mora só no .env da VPS.
+APONTADOR_CHAVE = os.environ.get("APONTADOR_CHAVE", "")
+OQF = "https://oqueeufiz.vpsjean.com"
 
 STATUS = ["a_gravar", "gravado", "editado", "postado", "pulado"]
 
@@ -119,9 +122,11 @@ async def cabecalhos(req: Request, chamar):
         if req.headers.get("x-planejador") != "1":
             return JSONResponse({"detail": "Pedido recusado."}, status_code=403)
     resp = await chamar(req)
+    extra = f" {OQF}" if APONTADOR_CHAVE else ""
     resp.headers["Content-Security-Policy"] = (
-        "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "font-src https://fonts.gstatic.com; img-src 'self' data:; frame-ancestors 'none'"
+        f"default-src 'self'; script-src 'self'{extra}; connect-src 'self'{extra}; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        f"font-src https://fonts.gstatic.com; img-src 'self' data: blob:{extra}; frame-ancestors 'none'"
     )
     resp.headers["X-Content-Type-Options"] = "nosniff"
     if req.url.path.startswith("/api/"):
@@ -164,8 +169,9 @@ def sair(resp: Response):
 @app.get("/api/eu")
 def eu(req: Request):
     u = usuario(req)
+    apontador = {"sistema": "PLANEJADORUELICON", "chave": APONTADOR_CHAVE, "script": OQF + "/apontador/apontador.js"} if APONTADOR_CHAVE else None
     return {"usuario": u, "hoje": hoje().isoformat(), "frentes": frentes(), "status": STATUS,
-            "formatos": formatos()}
+            "formatos": formatos(), "apontador": apontador}
 
 
 def formatos():
