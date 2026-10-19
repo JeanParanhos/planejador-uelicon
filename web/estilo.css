@@ -190,8 +190,22 @@ main{display:flex;flex-direction:column;min-width:0;min-height:0;overflow-y:auto
 .cartao-video .ab.vazia{color:var(--fraca);font-weight:400}
 .cartao-video .fm{font-size:12px;color:var(--fraca)}
 .cartao-video.feito{opacity:.65}
-.mais select{width:100%;height:28px;border:1px dashed var(--linha-forte);border-radius:8px;background:transparent;color:var(--fraca);padding:0 8px;font:500 12px Inter,sans-serif;cursor:pointer}
-.mais select:hover{color:var(--tinta-2);border-color:var(--fraca)}
+.btn-add{width:100%;height:28px;border:1px dashed var(--linha-forte);border-radius:8px;background:transparent;color:var(--fraca);padding:0 8px;font:500 12px Inter,sans-serif;cursor:pointer;display:flex;align-items:center;gap:6px}
+.btn-add .ic{width:14px;height:14px}
+.btn-add:hover,.btn-add[aria-expanded="true"]{color:var(--tinta);border-color:var(--fraca);background:var(--papel)}
+/* menu de escolher tipo de vídeo: flutua, por isso tem sombra */
+.escolha{position:fixed;z-index:65;width:340px;display:flex;flex-direction:column;background:var(--papel);border:1px solid var(--linha);border-radius:10px;box-shadow:0 8px 24px #0000001f;overflow:hidden}
+.esc-tit{margin:0;padding:10px 12px 8px;font-weight:600;border-bottom:1px solid var(--linha-2)}
+.esc-lista{overflow:auto;padding:4px}
+.esc-grupo+.esc-grupo{border-top:1px solid var(--linha-2);margin-top:4px;padding-top:4px}
+.esc-cap{margin:0;padding:6px 8px 2px;font-size:12px;color:var(--fraca);display:flex;align-items:center;gap:6px}
+.esc-cap i{width:8px;height:8px;border-radius:50%;background:var(--c)}
+.escolha [role=menuitem]{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;height:32px;padding:0 8px 0 22px;border:0;border-radius:6px;background:none;color:var(--tinta);font:inherit;text-align:left;cursor:pointer}
+.escolha [role=menuitem]:hover,.escolha [role=menuitem]:focus-visible{background:var(--hover);box-shadow:none}
+.escolha [role=menuitem] span:first-child{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.esc-n{font-size:12px;color:var(--fraca);white-space:nowrap;flex:none}
+.esc-n.tem{color:var(--verde)}
+@media (pointer:coarse){.escolha [role=menuitem]{height:44px}}
 .dia .livre{color:var(--fraca);padding:10px 4px;font-size:12px}
 .receita-chip{display:flex;justify-content:space-between;align-items:center;gap:6px;background:var(--papel);border:1px solid var(--linha);border-radius:8px;padding:4px 4px 4px 8px;min-width:0}
 .receita-chip .frente{overflow:hidden;text-overflow:ellipsis;max-width:100%}

@@ -270,7 +270,7 @@
         (at.length ? '<span class="conta' + (ok === at.length ? ' todo' : '') + '">' + ok + '/' + at.length + '</span>' : '') + '</div>' +
         (at.length ? '<span class="barra"><i class="g" style="width:' + (100 * ok / at.length) + '%"></i></span>' : '') +
         (doDia.length ? doDia.map(cartao).join('') : '<p class="livre">Dia livre</p>') +
-        '<div class="mais"><select data-add="' + d + '" aria-label="Pôr vídeo em ' + DIAS[i] + '">' + fmOptions('', '+ Vídeo') + '</select></div></section>';
+        '<div class="mais"><button type="button" class="btn-add" data-act="escolher" data-add="' + d + '" data-titulo="Pôr vídeo ' + (i > 4 ? 'no ' : 'na ') + DIAS[i] + ' ' + dm(d) + '" aria-haspopup="menu">' + ic('mais') + 'Vídeo</button></div></section>';
     }).join('') + '</div>';
     moldura('semana', corpo);
   }
@@ -282,6 +282,59 @@
       '<span class="ab' + (txt ? '' : ' vazia') + '">' + h(txt || 'Sem frase ainda') + '</span>' +
       '<span class="fm">' + h(v.formato_nome) + '</span>' + falta + '</button>';
   }
+
+  // ---------- Escolher tipo de vídeo ----------
+  // Menu claro no lugar do seletor do sistema (no Mac ele abre escuro). Agrupa por produto e diz quantos roteiros
+  // prontos cada tipo tem: a semana puxa o roteiro sozinha, então tipo sem roteiro pronto entra vazio.
+  var ESC = null;
+  function fechaEscolha() { var m = document.getElementById('escolha'); if (m) m.remove(); if (ESC && ESC.botao) ESC.botao.setAttribute('aria-expanded', 'false'); ESC = null; }
+  function abreEscolha(botao) {
+    if (ESC && ESC.botao === botao) return fechaEscolha();
+    fechaEscolha();
+    ESC = { botao: botao, add: botao.dataset.add, rec: botao.dataset.rec, d: botao.dataset.d };
+    var usados = {};
+    if (ESC.add && S.semana) S.semana.videos.forEach(function (v) { if (v.assunto_id) usados[v.assunto_id] = 1; });
+    carregaAssuntos().then(function (lista) {
+      if (!ESC || ESC.botao !== botao) return;
+      var prontos = {};
+      lista.forEach(function (a) { if (a.ativo && a.completo && !usados[a.id]) prontos[a.formato] = (prontos[a.formato] || 0) + 1; });
+      var corpo = B.frentes.map(function (fr) {
+        var fs = B.formatos.filter(function (f) { return f.frente === fr.id; }); if (!fs.length) return '';
+        return '<div class="esc-grupo"><p class="esc-cap"><i style="--c:' + h(fr.cor) + '"></i>' + h(fr.nome) + '</p>' + fs.map(function (f) {
+          var n = prontos[f.id] || 0;
+          return '<button type="button" role="menuitem" data-act="escolhido" data-fm="' + f.id + '"><span>' + h(f.nome) + '</span>' +
+            (n ? '<span class="esc-n tem">' + plural(n, 'roteiro pronto', 'roteiros prontos') + '</span>' : '<span class="esc-n">sem roteiro</span>') + '</button>';
+        }).join('') + '</div>';
+      }).join('');
+      var m = document.createElement('div');
+      m.id = 'escolha'; m.className = 'escolha'; m.setAttribute('role', 'menu');
+      m.innerHTML = '<p class="esc-tit">' + h(botao.dataset.titulo) + '</p><div class="esc-lista">' + corpo + '</div>';
+      document.body.appendChild(m);
+      var r = botao.getBoundingClientRect(), alt = m.offsetHeight, larg = m.offsetWidth;
+      var baixo = window.innerHeight - r.bottom - 8, top = baixo >= alt || baixo >= r.top ? r.bottom + 4 : r.top - 4 - Math.min(alt, r.top - 8);
+      m.style.top = Math.max(8, top) + 'px';
+      m.style.left = Math.max(8, Math.min(r.left, window.innerWidth - larg - 8)) + 'px';
+      m.style.maxHeight = (top > r.top ? Math.max(200, baixo) : r.top - 8) + 'px';
+      botao.setAttribute('aria-expanded', 'true');
+      var pri = m.querySelector('[role=menuitem]'); if (pri) pri.focus();
+    }).catch(falha);
+  }
+  function escolheu(fm) {
+    var e = ESC; fechaEscolha(); if (!e) return;
+    if (e.add) return api('POST', '/api/videos', { data: e.add, formato: fm }).then(function () { aviso('Vídeo posto no dia'); return recarregaSemana(); }).catch(falha);
+    var r = S.receitas.filter(function (x) { return x.id === +e.rec; })[0]; if (!r) return;
+    r.dias[+e.d].push(fm); return salvaReceita(r);
+  }
+  document.addEventListener('keydown', function (e) {
+    var m = document.getElementById('escolha'); if (!m) return;
+    if (e.key === 'Escape') { var b = ESC && ESC.botao; fechaEscolha(); if (b) b.focus(); e.stopPropagation(); return; }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    var itens = [].slice.call(m.querySelectorAll('[role=menuitem]')), i = itens.indexOf(document.activeElement);
+    i = e.key === 'ArrowDown' ? (i + 1) % itens.length : (i <= 0 ? itens.length : i) - 1;
+    itens[i].focus(); e.preventDefault();
+  }, true);
+  window.addEventListener('resize', fechaEscolha);
+  document.addEventListener('scroll', function (e) { var m = document.getElementById('escolha'); if (m && !m.contains(e.target)) fechaEscolha(); }, true);
 
   // ---------- Gaveta ----------
   function abrirGaveta(html) { document.getElementById('painel').innerHTML = html; document.getElementById('gaveta').hidden = false; }
@@ -507,7 +560,7 @@
         '<div class="quadro">' + r.dias.map(function (d, i) {
           return '<section class="dia"><div class="dia-cab"><div class="nome"><b>' + DIAS[i] + '</b></div><span class="conta">' + d.length + '</span></div>' +
             d.map(function (fid, j) { var fm = B.fmap[fid]; if (!fm) return ''; return '<div class="receita-chip">' + frente(fm.frente, fm.nome) + '<button class="btn btn-fantasma btn-icone btn-mini" type="button" data-act="rec-tira" data-id="' + r.id + '" data-d="' + i + '" data-j="' + j + '" aria-label="Tirar ' + h(fm.nome) + '">' + ic('x') + '</button></div>'; }).join('') +
-            '<div class="mais"><select data-rec="' + r.id + '" data-d="' + i + '" aria-label="Pôr tipo de vídeo em ' + DIAS[i] + '">' + fmOptions('', '+ Tipo de vídeo') + '</select></div></section>';
+            '<div class="mais"><button type="button" class="btn-add" data-act="escolher" data-rec="' + r.id + '" data-d="' + i + '" data-titulo="Pôr tipo de vídeo ' + (i > 4 ? 'no ' : 'na ') + DIAS[i] + '" aria-haspopup="menu">' + ic('mais') + 'Tipo de vídeo</button></div></section>';
         }).join('') + '</div><div><button class="btn btn-fantasma btn-perigo" type="button" data-act="apagar-receita" data-id="' + r.id + '">Apagar esta receita</button></div>';
     }
     moldura('config', corpo);
@@ -527,6 +580,7 @@
     }).catch(falha);
   }
   document.addEventListener('click', function (e) {
+    if (ESC && !e.target.closest('#escolha') && e.target.closest('[data-act="escolher"]') !== ESC.botao) fechaEscolha();
     var linha = e.target.closest('tr[data-href]');
     if (linha && !e.target.closest('a,button')) { location.hash = linha.dataset.href; return; }
     var ir = e.target.closest('[data-ir]'); if (ir) { location.hash = ir.dataset.ir; return; }
@@ -543,6 +597,8 @@
     if (act === 'montar-sim') { S.confirmar = false; return montar(true); }
     if (act === 'montar-nao') { S.confirmar = false; return desenhaSemana(); }
     if (act === 'video') return gavetaVideo(id);
+    if (act === 'escolher') return abreEscolha(t);
+    if (act === 'escolhido') return escolheu(t.dataset.fm);
     if (act === 'gravei-inicio') { e.stopPropagation(); return mudaStatus(id, 'gravado', 'a_gravar', function () { return telaInicio(); }); }
     if (act === 'status') {
       var v = S.vids[id]; if (!v || v.status === t.dataset.st) return;
@@ -647,14 +703,12 @@
   }
   document.addEventListener('change', function (e) {
     var t = e.target;
-    if (t.dataset.add) { if (!t.value) return; return api('POST', '/api/videos', { data: t.dataset.add, formato: t.value }).then(function () { aviso('Vídeo posto no dia'); return recarregaSemana(); }).catch(falha); }
     if (t.id === 'gFm' || t.id === 'gAs') {
       var vid = +t.dataset.vid, corpo = t.id === 'gFm' ? { formato: t.value } : { assunto_id: t.value ? +t.value : null, palavra: null };
       return api('PATCH', '/api/videos/' + vid, corpo).then(function () { return recarregaVideo(vid); }).then(function () { gavetaVideo(vid); if (rotaAtual() === 'semana') desenhaSemana(); }).catch(falha);
     }
     if (t.id === 'selRec') { location.hash = '#config/receitas/' + t.value; return; }
     if (t.id === 'recNome') return api('PUT', '/api/receitas/' + t.dataset.id, { nome: t.value.trim() }).then(function () { aviso('Nome salvo'); telaConfig('receitas', t.dataset.id); }).catch(falha);
-    if (t.dataset.rec) { var r = S.receitas.filter(function (x) { return x.id === +t.dataset.rec; })[0]; if (!t.value) return; r.dias[+t.dataset.d].push(t.value); return salvaReceita(r); }
   });
 
   iniciar();
