@@ -99,23 +99,46 @@
   }
   function iniciar() {
     return recarregaBase().then(function () {
-      return (equipe() ? carregaAssuntos(true) : Promise.resolve()).then(function () {
+      return (equipe() ? Promise.all([carregaAssuntos(true), api('GET', '/api/usuarios').then(function (u) { S.pessoas = u; })]) : Promise.resolve()).then(function () {
         if (!location.hash) location.hash = equipe() ? '#inicio' : '#hoje'; else rota();
       });
     }).catch(function (e) { if (e.message !== 'sessao') telaEntrar(); });
   }
 
-  // ---------- moldura ----------
+  // ---------- moldura: menu lateral como o da mesa da Verônica ----------
+  var PAPEL_CURTO = { super: 'admin', equipe: 'equipe', gravador: 'grava' };
+  function lerLocal(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function gravarLocal(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* sem armazenamento: só não lembra */ } }
+  if (lerLocal('planejador.menuRecolhido') === '1') document.body.classList.add('menu-recolhido');
   function moldura(atual, corpo) {
     var itens = equipe()
-      ? [['inicio', 'Início'], ['semana', 'Semana'], ['hoje', 'Folha do dia'], ['assuntos', 'Assuntos'], ['andamento', 'Andamento'], ['config', 'Configurações']]
+      ? [['inicio', 'Início'], ['semana', 'Semana'], ['hoje', 'Folha do dia'], ['assuntos', 'Assuntos'], ['andamento', 'Andamento']]
       : [['hoje', 'Folha do dia']];
-    app.innerHTML = '<header class="topo"><div class="in"><div class="marca-sis"><i>P</i><span>Planejador do Uélicon</span></div><nav aria-label="Menu">' +
-      itens.map(function (i) {
-        var cont = i[0] === 'assuntos' && S.faltam ? '<span class="cont">' + S.faltam + '</span>' : '';
-        return '<a href="#' + i[0] + '" class="' + (i[0] === atual ? 'ativo' : '') + '">' + ic(i[0]) + '<span class="rot-menu">' + i[1] + '</span>' + cont + '</a>';
-      }).join('') + '</nav><div class="quem"><span class="nome">' + h(B.eu.nome) + '</span><button data-act="sair" type="button">' + ic('sair') + 'Sair</button></div></div></header>' +
-      '<main class="conteudo">' + corpo + '</main>';
+    var sub = (location.hash || '').split('/')[1] || '';
+    var nav = itens.map(function (i) {
+      var n = i[0] === 'assuntos' && S.faltam ? '<span class="n alerta">' + S.faltam + '</span>' : '';
+      return '<a href="#' + i[0] + '" class="' + (i[0] === atual ? 'on' : '') + '" data-dica="' + i[1] + '">' + ic(i[0]) + '<span>' + i[1] + '</span>' + n + '</a>';
+    }).join('');
+    if (equipe() && S.pessoas) {
+      nav += '<div class="cap">Equipe</div>' + S.pessoas.filter(function (u) { return u.ativo; }).map(function (u) {
+        var cls = u.papel === 'gravador' ? 'grava' : u.papel === 'super' ? 'super' : '';
+        return '<a href="#config/pessoas/' + u.id + '" data-dica="' + h(u.nome) + '"><span class="av ' + cls + '">' + h(u.nome.charAt(0).toUpperCase()) + '</span><span>' + h(u.nome) + '</span><span class="papel">' + PAPEL_CURTO[u.papel] + '</span></a>';
+      }).join('') + '<a href="#config/pessoas/nova" class="mais" data-dica="Nova pessoa">' + ic('mais') + '<span>Nova pessoa</span></a>';
+    }
+    var cfgAberta = atual === 'config';
+    var cfg = equipe()
+      ? '<button class="cfg" type="button" data-act="cfg" aria-expanded="' + cfgAberta + '" data-dica="Configuração">' + ic('config') + '<span>Configuração</span><span class="seta"><svg class="ic" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span></button>' +
+        '<div class="sub-cfg" id="subCfg"' + (cfgAberta ? '' : ' hidden') + '><a href="#config/pessoas" class="' + (atual === 'config' && (sub === 'pessoas' || !sub) ? 'on' : '') + '" data-dica="Pessoas"><span>Pessoas</span></a>' +
+        '<a href="#config/receitas" class="' + (atual === 'config' && sub === 'receitas' ? 'on' : '') + '" data-dica="Receitas"><span>Receitas</span></a>' +
+        '<button type="button" data-act="sair" data-dica="Sair"><span>Sair</span></button></div>'
+      : '<button type="button" data-act="sair" data-dica="Sair">' + ic('sair') + '<span>Sair</span></button>';
+    app.innerHTML = '<div class="app"><aside aria-label="Menu"><div class="marca"><i>P</i><b>Planejador</b>' +
+      '<button class="recolher" type="button" data-act="recolher" aria-label="Recolher o menu" data-dica="Abrir o menu"><svg class="ic" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg></button></div>' +
+      '<nav>' + nav + '</nav><div class="config">' + cfg + '</div><div class="rodape"><span>' + h(B.eu.nome) + '</span><span>Uélicon</span></div></aside>' +
+      '<div class="fundo-menu" data-act="fechar-menu"></div><main><div class="conteudo">' + corpo + '</div></main></div>';
+    var cab = app.querySelector('.cabecalho');
+    if (cab) cab.insertAdjacentHTML('afterbegin', '<button class="btn btn-icone btn-fantasma abrir-menu" type="button" data-act="abrir-menu" aria-label="Abrir o menu"><svg class="ic" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>');
+    document.body.classList.remove('menu-aberto');
   }
   function rota() {
     fecharGaveta();
@@ -129,6 +152,7 @@
     return telaInicio();
   }
   window.addEventListener('hashchange', rota);
+  function irPara(hs) { if (location.hash === hs) rota(); else location.hash = hs; }
   function rotaAtual() { return (location.hash || '#inicio').slice(1).split('/')[0]; }
   function redesenha() { if (rotaAtual() === 'semana' && S.semana) return recarregaSemana(); rota(); return Promise.resolve(); }
 
@@ -390,12 +414,15 @@
   // ---------- Configurações ----------
   function telaConfig(aba, id) {
     aba = aba === 'receitas' ? 'receitas' : 'pessoas';
-    if (aba === 'pessoas') return api('GET', '/api/usuarios').then(desenhaPessoas).catch(falha);
+    if (aba === 'pessoas') return api('GET', '/api/usuarios').then(function (us) {
+      desenhaPessoas(us);
+      if (id === 'nova') gavetaPessoa(null); else if (id) gavetaPessoa(+id);
+    }).catch(falha);
     return api('GET', '/api/receitas').then(function (r) { S.receitas = r; desenhaReceitas(id ? +id : (r[0] && r[0].id)); }).catch(falha);
   }
   function cabConfig(aba) {
-    return '<div class="cabecalho"><div><h1>Configurações</h1><p class="estado">Quem entra no sistema e as receitas que montam a semana. Abas e tópicos dos assuntos se criam na própria tela de <a href="#assuntos">Assuntos</a>.</p></div></div>' +
-      '<div class="abas"><a href="#config/pessoas" class="' + (aba === 'pessoas' ? 'ativo' : '') + '">Pessoas</a><a href="#config/receitas" class="' + (aba === 'receitas' ? 'ativo' : '') + '">Receitas</a></div>';
+    return '<div class="cabecalho"><div><h1>' + (aba === 'pessoas' ? 'Pessoas' : 'Receitas') + '</h1><p class="estado">' + (aba === 'pessoas' ? 'Quem entra no sistema e o que cada um pode fazer.' : 'Quantos vídeos tem cada dia e de que tópico. A semana é montada a partir daqui.') + '</p></div></div>' +
+      '';
   }
   function desenhaPessoas(us) {
     S.pessoas = us;
@@ -458,6 +485,10 @@
     var t = e.target.closest('[data-act]'); if (!t) return;
     var act = t.dataset.act, id = +t.dataset.id;
     if (act === 'fechar') return fecharGaveta();
+    if (act === 'recolher') { var r0 = document.body.classList.toggle('menu-recolhido'); gravarLocal('planejador.menuRecolhido', r0 ? '1' : '0'); return; }
+    if (act === 'abrir-menu') return document.body.classList.add('menu-aberto');
+    if (act === 'fechar-menu') return document.body.classList.remove('menu-aberto');
+    if (act === 'cfg') { var sc = document.getElementById('subCfg'); sc.hidden = !sc.hidden; t.setAttribute('aria-expanded', !sc.hidden); return; }
     if (act === 'sair') return api('POST', '/api/sair').then(function () { location.hash = ''; telaEntrar(); });
     if (act === 'imprimir') return window.print();
     if (act === 'montar') { if (S.semana.videos.length) { S.confirmar = true; return desenhaSemana(); } return montar(false); }
@@ -539,12 +570,12 @@
       if (!papel.disabled) dp.papel = papel.value;
       if (val('pSenha')) dp.senha = val('pSenha');
       var pp = t.dataset.id ? api('PATCH', '/api/usuarios/' + t.dataset.id, dp) : api('POST', '/api/usuarios', Object.assign(dp, { login: val('pLogin') }));
-      return pp.then(function () { aviso(t.dataset.id ? 'Pessoa salva' : 'Acesso criado. Passe o e-mail e a senha para a pessoa.'); fecharGaveta(); telaConfig('pessoas'); }).catch(falha);
+      return pp.then(function () { aviso(t.dataset.id ? 'Pessoa salva' : 'Acesso criado. Passe o e-mail e a senha para a pessoa.'); fecharGaveta(); irPara('#config/pessoas'); }).catch(falha);
     }
     if (act === 'acesso-pessoa') {
       var at2 = +t.dataset.ativo;
       if (!at2 && t.dataset.certo !== '1') { t.dataset.certo = '1'; t.textContent = 'Clique de novo: ela não entra mais'; return; }
-      return api('PATCH', '/api/usuarios/' + id, { ativo: at2 }).then(function () { aviso(at2 ? 'Acesso devolvido' : 'Acesso tirado'); fecharGaveta(); telaConfig('pessoas'); }).catch(falha);
+      return api('PATCH', '/api/usuarios/' + id, { ativo: at2 }).then(function () { aviso(at2 ? 'Acesso devolvido' : 'Acesso tirado'); fecharGaveta(); irPara('#config/pessoas'); }).catch(falha);
     }
     if (act === 'nova-receita') return api('POST', '/api/receitas', { nome: 'Receita nova' }).then(function (r) { location.hash = '#config/receitas/' + r.id; }).catch(falha);
     if (act === 'duplicar-receita') {
